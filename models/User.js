@@ -8,12 +8,17 @@ var mongoose = require('mongoose');
 // Define our beer schema
 var UserSchema = new mongoose.Schema({
     userName: String,
+    minimumHotWalletBalance:Number,
+    maximumHotWalletBalance:Number,
     userEmail: String,
     userFullName: String,
     userContactNumber: String,
     userPassword: String,
     userEthereumId: String,
+    hotWalletBenificiaryKey: String,
     userProfileStatus: Number,
+    krakenAPIKey:String,
+    krakenAPISecret:String,
     userAddress: String,
     userOccupation: String,
     userAddress: String,
@@ -48,7 +53,15 @@ var UserSchema = new mongoose.Schema({
     numberOfRatings: Number,
     averageRating: String,
     notificationsCount: Number,
-    authenticationToken:String
+    authenticationToken:String,
+    profitWalletAddress:String,
+    profitWalletUserName:String,
+    profitWalletUserPassword:String,
+    profitWalletKrakenBenificiaryKey:String,
+    bitpointProfitWalletAddress:String,
+    bitpointProfitWalletKrakenBenificiaryKey:String,
+    merchantProfitMargin:String,
+    merchantProfitThreshold:Number
 });
 
 // Export the Mongoose model
