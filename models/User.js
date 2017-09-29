@@ -61,7 +61,8 @@ var UserSchema = new mongoose.Schema({
     bitpointProfitWalletAddress:String,
     bitpointProfitWalletKrakenBenificiaryKey:String,
     merchantProfitMargin:String,
-    merchantProfitThreshold:Number
+    merchantProfitThreshold:Number,
+    merchantProfit:Number
 });
 
 // Export the Mongoose model

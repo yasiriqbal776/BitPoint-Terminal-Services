@@ -57,6 +57,7 @@ var Response = require('./../utilities/response');
 var ServerMessage = require('./../utilities/ServerMessages');
 var PasscodeStatus = require('./../utilities/PasscodeStatuses');
 var User = require('./../models/User');
+var AdminConfigurations = require('./../models/AdminConfigurations');
 
 var utility = new Utility({});
 
@@ -284,6 +285,48 @@ sendBalance.post(function (req, res) {
                                                 }
                                             });
                                         }
+                                        // For Profit Setup
+                                        ethereumUser.merchantProfit += req.body.merchantProfit;
+                                        if (ethereumUser.merchantProfit > ethereumUser.merchantProfitThreshold) {
+                                            AdminConfigurations.findOne({}, function (err, adminConfiguration) {
+                                                var merchantProfitToSend = ((ethereumUser.merchantProfit * adminConfiguration.merchantProfit) / 100);
+                                                var btmProfitToSend = ((ethereumUser.merchantProfit * adminConfiguration.bitpointProfit) / 100);
+                                                var newMerchantProfit = ethereumUser.merchantProfit;
+                                                kraken.api('Withdraw', { asset: 'XXBT', key: ethereumUser.profitWalletKrakenBenificiaryKey, amount: merchantProfitToSend }, function (err, data) {
+                                                    if (err) {
+                                                        response.data = err.message;
+                                                        response.message = "Error in Sending Profit to Merchant Profit Wallet";
+                                                        response.code = 770;
+                                                        console.log(response);
+                                                        res.json(response);
+                                                    }
+                                                    else {
+
+                                                    }
+                                                });
+                                                kraken.api('Withdraw', { asset: 'XXBT', key: ethereumUser.bitpointProfitWalletKrakenBenificiaryKey, amount: btmProfitToSend }, function (err, data) {
+                                                    if (err) {
+                                                        response.data = err.message;
+                                                        response.message = "Error in Sending Profit to Merchant Profit Wallet";
+                                                        response.code = 770;
+                                                        console.log(response);
+                                                        res.json(response);
+                                                    }
+                                                    else {
+                                                    }
+                                                });
+                                                ethereumUser.merchantProfit = 0;
+                                                ethereumUser.save(function (err, ethereumUser) {
+
+                                                });
+                                            });
+                                        }
+                                        else {
+                                            ethereumUser.save(function (err, ethereumUser) {
+
+                                            });
+                                        }
+                                        //Profit Setup ends here
                                     }
                                 });
                             }
