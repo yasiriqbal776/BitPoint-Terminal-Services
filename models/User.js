@@ -60,7 +60,7 @@ var UserSchema = new mongoose.Schema({
     profitWalletKrakenBenificiaryKey:String,
     bitpointProfitWalletAddress:String,
     bitpointProfitWalletKrakenBenificiaryKey:String,
-    merchantProfitMargin:String,
+    merchantProfitMargin:Number,
     merchantProfitThreshold:Number,
     merchantProfit:Number
 });

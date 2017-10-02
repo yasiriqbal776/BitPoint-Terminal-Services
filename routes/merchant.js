@@ -58,6 +58,7 @@ var ServerMessage = require('./../utilities/ServerMessages');
 var PasscodeStatus = require('./../utilities/PasscodeStatuses');
 var User = require('./../models/User');
 var AdminConfigurations = require('./../models/AdminConfigurations');
+var Transaction = require('./../models/Transaction');
 
 var utility = new Utility({});
 
@@ -132,8 +133,14 @@ createMerchantRoute.post(function (req, res) {
     ethereumUser.updatedOnUTC = Math.floor(new Date());
     ethereumUser.minimumHotWalletBalance = 0.25;
     ethereumUser.maximumHotWalletBalance = 0.50;
+    ethereumUser.merchantProfit = 0;
+    ethereumUser.merchantProfitMargin = 10;
     console.log("USer Password for Wallet Creation is " + ethereumUser.userPassword);
     client.createNewWallet(ethereumUser.userName, ethereumUser.userPassword, function (err, wallet, backupInfo) {
+        console.log("Wallet ");
+        console.log(wallet);
+        console.log("BackupInfo");
+        console.log(backupInfo);
         if (err) {
             console.log(err.message);
             console.log(err.code);
@@ -143,7 +150,11 @@ createMerchantRoute.post(function (req, res) {
         }
         else {
             client.initWallet(ethereumUser.userName, ethereumUser.userPassword, function (err, wallet) {
+                console.log("wallet after Initializing ");
+                console.log(wallet);
                 wallet.getNewAddress(function (err, address) {
+                    console.log("Address");
+                    console.log(address);
                     //global.addressArray.push(address);
                     ethereumUser.userEthereumId = address;
                     ethereumUser.save(function (err, ethereumUser) {
@@ -159,7 +170,7 @@ createMerchantRoute.post(function (req, res) {
 });
 
 getMerchantListRoute.post(function (req, res) {
-    EthereumUser.find({ userRole: 2 }, function (err, merchants) {
+    User.find({ userRole: 2 }, function (err, merchants) {
         if (err) {
             response.code = 400;
             response.message = "Error";
@@ -219,8 +230,12 @@ sendBalance.post(function (req, res) {
         }
         else {
             client.address(ethereumUser.userEthereumId, function (err, address) {
-                if (err)
+                if (err){
+                response.data = null;
+                response.message = "Error in Getting Address";
+                response.code = 505;
                     res.json(err);
+                }
                 else {
                     console.log("Customer address is ");
                     console.log(address);
@@ -263,13 +278,21 @@ sendBalance.post(function (req, res) {
                                         console.log("Result in paying to Customer Address from Wallet is");
                                         console.log(result);
                                         var krakenApi = require("kraken-api");
-                                        var krakenKey = "kbHBa5jZ1dmBe53zuTg5drgGUI0Ee3O+vPnrlpNImzigAH7TsFzDwGbq"; // API Key
-                                        var krakenSecret = "4NuPL2wAzVoa4FrT29BFUgN8AqR3MxUBlM44xwoZKemaFWxkagux0U0TEU8yciygowqGvrGOZSMRCrxth8X9Aw=="; // API Private Key
+                                        var krakenKey = ethereumUser.krakenAPIKey;
+                                        var krakenSecret = ethereumUser.krakenAPISecret;
                                         const KrakenClient = require('kraken-api');
                                         const kraken = new KrakenClient(krakenKey, krakenSecret);
-                                        // Get Ticker Info
-                                        var sendingAmount = amount * 1.1;
-                                        console.log("Sending Amount is " + sendingAmount);
+                                        var transaction = new Transaction();
+                                        transaction.merchantId = ethereumUser._id;
+                                        transaction.customerAddress = customerAddress;
+                                        transaction.sendingAmount = amount;
+                                        transaction.transactionId = result;
+                                        transaction.transactionTime = Math.floor(new Date());
+                                        transaction.save();
+                                        response.data = result;
+                                        response.code=200;
+                                        response.message="Success";
+                                        res.json(response);
                                         if (address.balance < ethereumUser.minimumHotWalletBalance) {
                                             var sendingAmount = ethereumUser.maximumHotWalletBalance - address.balance;
                                             kraken.api('Withdraw', { asset: 'XXBT', key: ethereumUser.hotWalletBenificiaryKey, amount: sendingAmount }, function (err, data) {
@@ -278,7 +301,6 @@ sendBalance.post(function (req, res) {
                                                     response.message = "Withdraw Error";
                                                     response.code = 770;
                                                     console.log(response);
-                                                    res.json(response);
                                                 }
                                                 else {
 
@@ -298,7 +320,6 @@ sendBalance.post(function (req, res) {
                                                         response.message = "Error in Sending Profit to Merchant Profit Wallet";
                                                         response.code = 770;
                                                         console.log(response);
-                                                        res.json(response);
                                                     }
                                                     else {
 
@@ -310,7 +331,6 @@ sendBalance.post(function (req, res) {
                                                         response.message = "Error in Sending Profit to Merchant Profit Wallet";
                                                         response.code = 770;
                                                         console.log(response);
-                                                        res.json(response);
                                                     }
                                                     else {
                                                     }
@@ -338,24 +358,7 @@ sendBalance.post(function (req, res) {
     });
 });
 
-/*socket.on('connect', function () {
-    // Join the room.
-    socket.emit('subscribe', 'inv');
-})
-socket.on('tx', function (data) {
-    var addresses = data.vout;
-    for (var i = 0; i < addresses.length; i++) {
-        var address = Object.keys(addresses[i])[0];
-        var isExists = global.addressArray.find(x => x == address);
-        var isExistsInInterimAccount = global.interimAccountArray.find(x => x == address);
-        if (isExists !== undefined) {
-            insertData(data, address, addresses[i]);
-        }
-        else if (isExistsInInterimAccount !== undefined) {
-            inserDataInToInterimTransaction(data, address, addresses[i]);
-        }
-    }
-});*/
+
 
 function insertData(data, address) {
     // send 8% to 
@@ -598,6 +601,7 @@ createMerchantProfitWalletRoute.post(function (req, res) {
                         }
                     });
                 }
+                
             }
         }
     });
