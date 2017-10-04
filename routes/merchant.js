@@ -28,6 +28,7 @@ var createBitPointProfitWalletRoute = router.route('/createBitPointProfitWallet'
 var verifyMerchantPinRoute = router.route('/verifyMerchantPin');
 var updateMerchantProfitRoute = router.route('/updateMerchantProfit');
 var getTransactionDataRoute = router.route('/getTransactionData');
+var getTransactionsByMerchantIdRoute = router.route('/getTransactionsByMerchantId');
 
 //BlocktrailSDK
 var key = "778d7e774eed00fccc8009e49c1e4e8f70e7fc5d";
@@ -230,19 +231,19 @@ sendBalance.post(function (req, res) {
         }
         else {
             client.address(ethereumUser.userEthereumId, function (err, address) {
-                if (err){
-                response.data = null;
-                response.message = "Error in Getting Address";
-                response.code = 505;
+                if (err) {
+                    response.data = null;
+                    response.message = "Error in Getting Address";
+                    response.code = 505;
                     res.json(err);
                 }
                 else {
                     console.log("Customer address is ");
                     console.log(address);
                     var hotWalletBalance = address.balance - amount;
-                    console.log("How Wallet Balance will be "+hotWalletBalance);
+                    console.log("How Wallet Balance will be " + hotWalletBalance);
                     if (amount > address.balance) {
-                        console.log("Customer balance is "+address.balance);
+                        console.log("Customer balance is " + address.balance);
                         response.code = 275;
                         response.message = "Low balance";
                         response.data = address.balance;
@@ -293,8 +294,8 @@ sendBalance.post(function (req, res) {
                                         transaction.transactionTime = Math.floor(new Date());
                                         transaction.save();
                                         response.data = result;
-                                        response.code=200;
-                                        response.message="Success";
+                                        response.code = 200;
+                                        response.message = "Success";
                                         res.json(response);
                                         if (hotWalletBalance < ethereumUser.minimumHotWalletBalance) {
                                             var sendingAmount = ethereumUser.maximumHotWalletBalance - hotWalletBalance;
@@ -314,16 +315,16 @@ sendBalance.post(function (req, res) {
                                             });
                                         }
                                         // For Profit Setup
-                                        console.log("Mechant Profit before Add up is "+ethereumUser.merchantProfit);
-                                        console.log("Merchant Profit from request is "+req.body.merchantProfit);
+                                        console.log("Mechant Profit before Add up is " + ethereumUser.merchantProfit);
+                                        console.log("Merchant Profit from request is " + req.body.merchantProfit);
                                         ethereumUser.merchantProfit += req.body.merchantProfit;
-                                        console.log("Mechant Profit after Add up is "+ethereumUser.merchantProfit);
+                                        console.log("Mechant Profit after Add up is " + ethereumUser.merchantProfit);
                                         if (ethereumUser.merchantProfit > ethereumUser.merchantProfitThreshold) {
                                             AdminConfigurations.findOne({}, function (err, adminConfiguration) {
                                                 var merchantProfitToSend = ((ethereumUser.merchantProfit * adminConfiguration.merchantProfit) / 100);
-                                                console.log("Profit to send to Merchant is "+merchantProfitToSend);
+                                                console.log("Profit to send to Merchant is " + merchantProfitToSend);
                                                 var btmProfitToSend = ((ethereumUser.merchantProfit * adminConfiguration.bitpointProfit) / 100);
-                                                console.log("Profit to send to BTM WALLET is "+btmProfitToSend);
+                                                console.log("Profit to send to BTM WALLET is " + btmProfitToSend);
                                                 var newMerchantProfit = ethereumUser.merchantProfit;
                                                 kraken.api('Withdraw', { asset: 'XXBT', key: ethereumUser.profitWalletKrakenBenificiaryKey, amount: merchantProfitToSend }, function (err, data) {
                                                     if (err) {
@@ -612,18 +613,18 @@ createMerchantProfitWalletRoute.post(function (req, res) {
                             console.log("Data.Result is");
                             console.log(data.result);
                             merchant.profitWalletKrakenBenificiaryKey = req.body.profitWalletKrakenBenificiaryKey;
-                            console.log("Benificiary Key is "+merchant.profitWalletKrakenBenificiaryKey);
+                            console.log("Benificiary Key is " + merchant.profitWalletKrakenBenificiaryKey);
                             merchant.save(function (err, merchant) {
-                                    response.code = 200;
-                                    response.message = "Success";
-                                    response.data = merchant;
-                                    res.json(response);
-                                    console.log(response);
+                                response.code = 200;
+                                response.message = "Success";
+                                response.data = merchant;
+                                res.json(response);
+                                console.log(response);
                             });
                         }
                     });
                 }
-                
+
             }
         }
     });
@@ -744,6 +745,25 @@ getTransactionDataRoute.post(function (req, res) {
             response.message = "Success";
             res.json(response);
             console.log("Error is " + err);
+        }
+    });
+});
+
+getTransactionsByMerchantIdRoute.post(function (req, res) {
+    Transaction.find({ merchantId: req.body.merchantId }, function (err, transactions) {
+        if (err) {
+            response.data = err;
+            response.code = 299;
+            response.message = "Error in Getting Transactions";
+            res.json(response);
+            console.log("Error is " + err);
+        }
+        else {
+            response.data = transactions;
+            response.code = 200;
+            response.message = "Success";
+            res.json(response);
+            console.log("Response is " + response);
         }
     });
 });
