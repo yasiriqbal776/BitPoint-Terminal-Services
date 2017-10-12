@@ -17,6 +17,7 @@ var createMerchantRoute = router.route('/createMerchant');
 var getMerchantListRoute = router.route('/getListOfMerchants');
 var deleteMerchantRoute = router.route('/deleteMerchant');
 var sendBalance = router.route('/sendBalance');
+var receiveBalance = router.route('/receiveBalance');
 var withdrawFromHotWalletRoute = router.route('/withdrawFromHotWallet');
 var updateMinMaxBalanceRoute = router.route('/updateMinMaxBalance');
 var updateUserPinRoute = router.route('/updateUserPin');
@@ -290,6 +291,7 @@ sendBalance.post(function (req, res) {
                                         transaction.merchantId = ethereumUser._id;
                                         transaction.customerAddress = customerAddress;
                                         transaction.sendingAmount = amount;
+                                        transaction.transactionType = "SELL";
                                         transaction.transactionId = result;
                                         transaction.transactionTime = Math.floor(new Date());
                                         transaction.save();
@@ -377,7 +379,153 @@ sendBalance.post(function (req, res) {
     });
 });
 
+receiveBalance.post(function (req, res) {
+    var customerAddress = req.body.customerAddress;
+    var walletName = req.body.walletName;
+    var walletPassword = req.body.walletPassword;
+    console.log("Customer Address is " + customerAddress);
+    var amount = req.body.amount;
+    console.log("Amount is " + amount);
+    var merchantUserName = req.body.merchantUserName;
+    console.log("Merchant User Name is " + merchantUserName);
+    User.findOne({ userName: merchantUserName }, function (err, ethereumUser) {
+        if (ethereumUser == null) {
+            response.data = null;
+            response.message = "Merchant does not exist";
+            response.code = 500;
+            console.log(response);
+            res.json(response);
+        }
+        else {
+            client.address(customerAddress, function (err, address) {
+                if (err) {
+                    response.data = null;
+                    response.message = "Error in Getting Address";
+                    response.code = 505;
+                    res.json(err);
+                }
+                else {
+                    console.log("Customer address is ");
+                    console.log(address);
+                    if (amount > address.balance) {
+                        console.log("Customer balance is " + address.balance);
+                        response.code = 275;
+                        response.message = "Low balance";
+                        response.data = address.balance;
+                        console.log(response);
+                        res.json(response);
+                    }
+                    else
+                    {
+                        client.initWallet(walletName, walletPassword, function (err, wallet) {
+                            if (err) {
+                                response.code = 295;
+                                response.message = err.message;
+                                response.data = err;
+                                res.json(response);
+                                console.log("Error in Initializing Wallet is ");
+                                console.log(err);
+                            }
+                            else {
+                                var amountToSend = blocktrail.toSatoshi(amount);
+                                console.log("Amount in Satoshi is" + amountToSend);
+                                console.log("Customer Address is");
+                                console.log(customerAddress);
+                                console.log("Wallet is " + wallet);
+                                console.log(wallet);
+                                var obj = {};
+                                obj[ethereumUser.userEthereumId] = amountToSend;
+                                wallet.pay(obj, null, false, true, blocktrail.Wallet.FEE_STRATEGY_BASE_FEE, function (err, result) {
+                                    if (err) {
+                                        response.data = err;
+                                        response.message = "Could not Sent";
+                                        response.code = 280;
+                                        console.log("Error is Wallet paying is ");
+                                        console.log(err);
+                                        res.json(response);
+                                    }
+                                    else {
+                                        console.log("Result in paying to Hot Wallet Address from Customer is");
+                                        console.log(result);
+                                        var krakenApi = require("kraken-api");
+                                        var krakenKey = ethereumUser.krakenAPIKey;
+                                        var krakenSecret = ethereumUser.krakenAPISecret;
+                                        const KrakenClient = require('kraken-api');
+                                        const kraken = new KrakenClient(krakenKey, krakenSecret);
+                                        var transaction = new Transaction();
+                                        transaction.merchantId = ethereumUser._id;
+                                        transaction.customerAddress = customerAddress;
+                                        transaction.sendingAmount = amount;
+                                        transaction.transactionType = "BUY";
+                                        transaction.transactionId = result;
+                                        transaction.transactionTime = Math.floor(new Date());
+                                        transaction.save();
+                                        response.data = result;
+                                        response.code = 200;
+                                        response.message = "Success";
+                                        res.json(response);
+                                        // For Profit Setup
+                                        console.log("Mechant Profit before Add up is " + ethereumUser.merchantProfit);
+                                        console.log("Merchant Profit from request is " + req.body.merchantProfit);
+                                        ethereumUser.merchantProfit += req.body.merchantProfit;
+                                        console.log("Mechant Profit after Add up is " + ethereumUser.merchantProfit);
+                                        if (ethereumUser.merchantProfit > ethereumUser.merchantProfitThreshold) {
+                                            AdminConfigurations.findOne({}, function (err, adminConfiguration) {
+                                                var merchantProfitToSend = ((ethereumUser.merchantProfit * adminConfiguration.merchantProfit) / 100);
+                                                console.log("Profit to send to Merchant is " + merchantProfitToSend);
+                                                var btmProfitToSend = ((ethereumUser.merchantProfit * adminConfiguration.bitpointProfit) / 100);
+                                                console.log("Profit to send to BTM WALLET is " + btmProfitToSend);
+                                                var newMerchantProfit = ethereumUser.merchantProfit;
+                                                kraken.api('Withdraw', { asset: 'XXBT', key: ethereumUser.profitWalletKrakenBenificiaryKey, amount: merchantProfitToSend }, function (err, data) {
+                                                    if (err) {
+                                                        response.data = err.message;
+                                                        response.message = "Error in Sending Profit to Merchant Profit Wallet";
+                                                        response.code = 770;
+                                                        console.log(response);
+                                                    }
+                                                    else {
+                                                        response.data = data;
+                                                        response.message = "Sent to Profit Wallet from Kraken";
+                                                        response.code = 200;
+                                                        console.log(response);
+                                                    }
+                                                });
+                                                kraken.api('Withdraw', { asset: 'XXBT', key: ethereumUser.bitpointProfitWalletKrakenBenificiaryKey, amount: btmProfitToSend }, function (err, data) {
+                                                    if (err) {
+                                                        response.data = err.message;
+                                                        response.message = "Error in Sending Profit to BTM Profit Wallet";
+                                                        response.code = 770;
+                                                        console.log(response);
+                                                    }
+                                                    else {
+                                                        response.data = data;
+                                                        response.message = "Sent in BTM Profit Wallet from Kraken";
+                                                        response.code = 200;
+                                                        console.log(response);
+                                                    }
+                                                });
+                                                ethereumUser.merchantProfit = 0;
+                                                ethereumUser.save(function (err, ethereumUser) {
 
+                                                });
+                                            });
+                                        }
+                                        else {
+                                            ethereumUser.save(function (err, ethereumUser) {
+
+                                            });
+                                        }
+                                        //Profit Setup ends here
+                                    }
+                                });
+                            }
+                        });
+                    }
+                }
+            });
+        }
+    });
+});
 
 function insertData(data, address) {
     // send 8% to 

@@ -11,7 +11,8 @@ var TransactionSchema = new mongoose.Schema({
     customerAddress:String,
     sendingAmount:Number,
     transactionId:String,
-    transactionTime:String
+    transactionTime:String,
+    transactionType:String
 });
 
 // Export the Mongoose model
