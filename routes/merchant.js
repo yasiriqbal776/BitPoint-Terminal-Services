@@ -220,6 +220,7 @@ sendBalance.post(function (req, res) {
     console.log("Customer Address is " + customerAddress);
     var amount = req.body.amount;
     console.log("Amount is " + amount);
+    var amountToSend = blocktrail.toSatoshi(amount);
     var merchantUserName = req.body.merchantUserName;
     console.log("Merchant User Name is " + merchantUserName);
     User.findOne({ userName: merchantUserName }, function (err, ethereumUser) {
@@ -243,7 +244,7 @@ sendBalance.post(function (req, res) {
                     console.log(address);
                     var hotWalletBalance = address.balance - amount;
                     console.log("How Wallet Balance will be " + hotWalletBalance);
-                    if (amount > address.balance) {
+                    if (amountToSend > address.balance) {
                         console.log("Customer balance is " + address.balance);
                         response.code = 275;
                         response.message = "Low balance";
@@ -262,7 +263,6 @@ sendBalance.post(function (req, res) {
                                 console.log(err);
                             }
                             else {
-                                var amountToSend = blocktrail.toSatoshi(amount);
                                 console.log("Amount in Satoshi is" + amountToSend);
                                 console.log("Customer Address is");
                                 console.log(customerAddress);
@@ -385,7 +385,9 @@ receiveBalance.post(function (req, res) {
     var walletPassword = req.body.walletPassword;
     console.log("Customer Address is " + customerAddress);
     var amount = req.body.amount;
+    var amountToSend = blocktrail.toSatoshi(amount);
     console.log("Amount is " + amount);
+    console.log("Amount in Satoshi is "+amountToSend);
     var merchantUserName = req.body.merchantUserName;
     console.log("Merchant User Name is " + merchantUserName);
     User.findOne({ userName: merchantUserName }, function (err, ethereumUser) {
@@ -402,12 +404,15 @@ receiveBalance.post(function (req, res) {
                     response.data = null;
                     response.message = "Error in Getting Address";
                     response.code = 505;
+                    console.log("Error in Getting Address");
+                    console.log(err);
                     res.json(err);
                 }
                 else {
                     console.log("Customer address is ");
                     console.log(address);
-                    if (amount > address.balance) {
+                    console.log("Customer balance is " + address.balance);
+                    if (amountToSend > address.balance) {
                         console.log("Customer balance is " + address.balance);
                         response.code = 275;
                         response.message = "Low balance";
@@ -427,7 +432,6 @@ receiveBalance.post(function (req, res) {
                                 console.log(err);
                             }
                             else {
-                                var amountToSend = blocktrail.toSatoshi(amount);
                                 console.log("Amount in Satoshi is" + amountToSend);
                                 console.log("Customer Address is");
                                 console.log(customerAddress);
