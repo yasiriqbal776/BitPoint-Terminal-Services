@@ -30,6 +30,7 @@ var verifyMerchantPinRoute = router.route('/verifyMerchantPin');
 var updateMerchantProfitRoute = router.route('/updateMerchantProfit');
 var getTransactionDataRoute = router.route('/getTransactionData');
 var getTransactionsByMerchantIdRoute = router.route('/getTransactionsByMerchantId');
+var getTransactionStatisticsByTimeRoute = router.route('/getTransactionStatisticsByTimeRoute');
 
 //BlocktrailSDK
 var key = "778d7e774eed00fccc8009e49c1e4e8f70e7fc5d";
@@ -918,6 +919,74 @@ getTransactionsByMerchantIdRoute.post(function (req, res) {
             console.log("Response is " + response);
         }
     });
+});
+
+getTransactionStatisticsByTimeRoute.post(function(req,res){
+    var transaction = new Transaction();
+    transaction.merchantId = "ethereumUser._id";
+    transaction.customerAddress = "customerAddress";
+    transaction.sendingAmount = 99888;
+    transaction.transactionType = "BUY";
+    transaction.transactionId = 1233454;
+    transaction.transactionTime = Math.floor(new Date());
+    transaction.save();
+    var startingTime = Math.floor(new Date());
+    var endingTime = "";
+    console.log("Starting Time is "+startingTime);
+    if(req.body.filterTime == 1) 
+    {
+        endingTime = Math.floor(new Date()) - 86400000;
+    }
+    else if(req.body.filterTime == 2) 
+    {
+        endingTime = Math.floor(new Date()) - (7 * 86400000);
+    }
+    else if(req.body.filterTime == 3) 
+    {
+        endingTime = Math.floor(new Date()) - (30 * 86400000);
+    }
+    else if(req.body.filterTime == 4) 
+    {
+        endingTime = Math.floor(new Date()) - (90 * 86400000);
+    }
+    console.log("Ending time is "+endingTime);
+    //res.json(endingTime);
+    Transaction.find({ transactionTime: {
+        $gte: endingTime
+    }  }, function (err, transactions) {
+        if (err) {
+            response.data = err;
+            response.code = 299;
+            response.message = "Error in Getting Transactions";
+            //res.json(response);
+            console.log("Error is " + err);
+        }
+        else {
+            var sendingVolume=0;
+            var receivingVolume=0;
+            var totalVolume=0;
+            transactions.forEach(function(element) {
+                totalVolume+=element.sendingAmount;
+                if(element.transactionType == "SELL" )
+                {
+                    sendingVolume+=element.sendingAmount;
+                }
+                else
+                {
+                    receivingVolume+=element.sendingAmount;
+                }
+            }, this);
+            var obj = new Object();
+            obj.sendingVolume = sendingVolume;
+            obj.receivingVolume=receivingVolume;
+            obj.totalVolume=totalVolume;
+            response.data = obj;
+            response.code = 200;
+            response.message = "Success";
+            res.json(response);
+            console.log("Response is " + response);
+        }
+    }); 
 });
 
 module.exports = router;
