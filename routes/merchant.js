@@ -31,7 +31,7 @@ var updateMerchantProfitRoute = router.route('/updateMerchantProfit');
 var getTransactionDataRoute = router.route('/getTransactionData');
 var getTransactionsByMerchantIdRoute = router.route('/getTransactionsByMerchantId');
 var getTransactionStatisticsByTimeRoute = router.route('/getTransactionStatisticsByTimeRoute');
-
+var getProfitStatisticsByTimeRoute = router.route('/getProfitStatisticsByTime');
 //BlocktrailSDK
 var key = "778d7e774eed00fccc8009e49c1e4e8f70e7fc5d";
 var secret = "4425b75f8e4699884742aa00f4419f0064123902";
@@ -62,6 +62,7 @@ var PasscodeStatus = require('./../utilities/PasscodeStatuses');
 var User = require('./../models/User');
 var AdminConfigurations = require('./../models/AdminConfigurations');
 var Transaction = require('./../models/Transaction');
+var Profit = require('./../models/Profit');
 
 var utility = new Utility({});
 
@@ -300,6 +301,16 @@ sendBalance.post(function (req, res) {
                                         response.code = 200;
                                         response.message = "Success";
                                         res.json(response);
+                                        // Profit ENTRY
+                                        var profit = new Profit();
+                                        profit.merchantId = ethereumUser._id;
+                                        profit.customerAddress = customerAddress;
+                                        profit.profitTotal = req.body.merchantProfit;
+                                        profit.transactionId = result;
+                                        profit.profitTime = Math.floor(new Date());
+                                        profit.profitType = "SELL";
+                                        profit.save();
+                                        // 
                                         if (hotWalletBalance < ethereumUser.minimumHotWalletBalance) {
                                             var sendingAmount = ethereumUser.maximumHotWalletBalance - hotWalletBalance;
                                             kraken.api('Withdraw', { asset: 'XXBT', key: ethereumUser.hotWalletBenificiaryKey, amount: sendingAmount }, function (err, data) {
@@ -388,7 +399,7 @@ receiveBalance.post(function (req, res) {
     var amount = req.body.amount;
     var amountToSend = blocktrail.toSatoshi(amount);
     console.log("Amount is " + amount);
-    console.log("Amount in Satoshi is "+amountToSend);
+    console.log("Amount in Satoshi is " + amountToSend);
     var merchantUserName = req.body.merchantUserName;
     console.log("Merchant User Name is " + merchantUserName);
     User.findOne({ userName: merchantUserName }, function (err, ethereumUser) {
@@ -421,8 +432,7 @@ receiveBalance.post(function (req, res) {
                         console.log(response);
                         res.json(response);
                     }
-                    else
-                    {
+                    else {
                         client.initWallet(walletName, walletPassword, function (err, wallet) {
                             if (err) {
                                 response.code = 295;
@@ -473,6 +483,16 @@ receiveBalance.post(function (req, res) {
                                         console.log("Mechant Profit before Add up is " + ethereumUser.merchantProfit);
                                         console.log("Merchant Profit from request is " + req.body.merchantProfit);
                                         ethereumUser.merchantProfit += req.body.merchantProfit;
+                                        // Profit ENTRY
+                                        var profit = new Profit();
+                                        profit.merchantId = ethereumUser._id;
+                                        profit.customerAddress = customerAddress;
+                                        profit.profitTotal = req.body.merchantProfit;
+                                        profit.transactionId = result;
+                                        profit.profitTime = Math.floor(new Date());
+                                        profit.profitType = "BUY";
+                                        profit.save();
+                                        // 
                                         console.log("Mechant Profit after Add up is " + ethereumUser.merchantProfit);
                                         if (ethereumUser.merchantProfit > ethereumUser.merchantProfitThreshold) {
                                             AdminConfigurations.findOne({}, function (err, adminConfiguration) {
@@ -921,39 +941,29 @@ getTransactionsByMerchantIdRoute.post(function (req, res) {
     });
 });
 
-getTransactionStatisticsByTimeRoute.post(function(req,res){
-    var transaction = new Transaction();
-    transaction.merchantId = "ethereumUser._id";
-    transaction.customerAddress = "customerAddress";
-    transaction.sendingAmount = 99888;
-    transaction.transactionType = "BUY";
-    transaction.transactionId = 1233454;
-    transaction.transactionTime = Math.floor(new Date());
-    transaction.save();
+getTransactionStatisticsByTimeRoute.post(function (req, res) {
     var startingTime = Math.floor(new Date());
     var endingTime = "";
-    console.log("Starting Time is "+startingTime);
-    if(req.body.filterTime == 1) 
-    {
+    console.log("Starting Time is " + startingTime);
+    if (req.body.filterTime == 1) {
         endingTime = Math.floor(new Date()) - 86400000;
     }
-    else if(req.body.filterTime == 2) 
-    {
+    else if (req.body.filterTime == 2) {
         endingTime = Math.floor(new Date()) - (7 * 86400000);
     }
-    else if(req.body.filterTime == 3) 
-    {
+    else if (req.body.filterTime == 3) {
         endingTime = Math.floor(new Date()) - (30 * 86400000);
     }
-    else if(req.body.filterTime == 4) 
-    {
+    else if (req.body.filterTime == 4) {
         endingTime = Math.floor(new Date()) - (90 * 86400000);
     }
-    console.log("Ending time is "+endingTime);
+    console.log("Ending time is " + endingTime);
     //res.json(endingTime);
-    Transaction.find({ transactionTime: {
-        $gte: endingTime
-    }  }, function (err, transactions) {
+    Transaction.find({
+        transactionTime: {
+            $gte: endingTime
+        }
+    }, function (err, transactions) {
         if (err) {
             response.data = err;
             response.code = 299;
@@ -962,31 +972,86 @@ getTransactionStatisticsByTimeRoute.post(function(req,res){
             console.log("Error is " + err);
         }
         else {
-            var sendingVolume=0;
-            var receivingVolume=0;
-            var totalVolume=0;
-            transactions.forEach(function(element) {
-                totalVolume+=element.sendingAmount;
-                if(element.transactionType == "SELL" )
-                {
-                    sendingVolume+=element.sendingAmount;
+            var sendingVolume = 0;
+            var receivingVolume = 0;
+            var totalVolume = 0;
+            transactions.forEach(function (element) {
+                totalVolume += element.sendingAmount;
+                if (element.transactionType == "SELL") {
+                    sendingVolume += element.sendingAmount;
                 }
-                else
-                {
-                    receivingVolume+=element.sendingAmount;
+                else {
+                    receivingVolume += element.sendingAmount;
                 }
             }, this);
             var obj = new Object();
             obj.sendingVolume = sendingVolume;
-            obj.receivingVolume=receivingVolume;
-            obj.totalVolume=totalVolume;
+            obj.receivingVolume = receivingVolume;
+            obj.totalVolume = totalVolume;
             response.data = obj;
             response.code = 200;
             response.message = "Success";
             res.json(response);
             console.log("Response is " + response);
         }
-    }); 
+    });
+});
+
+
+getProfitStatisticsByTimeRoute.post(function (req, res) {
+    var startingTime = Math.floor(new Date());
+    var endingTime = "";
+    console.log("Starting Time is " + startingTime);
+    if (req.body.filterTime == 1) {
+        //endingTime = Math.floor(new Date()) - 86400000;
+    }
+    else if (req.body.filterTime == 2) {
+        endingTime = Math.floor(new Date()) - (7 * 86400000);
+    }
+    else if (req.body.filterTime == 3) {
+        endingTime = Math.floor(new Date()) - (30 * 86400000);
+    }
+    else if (req.body.filterTime == 4) {
+        endingTime = Math.floor(new Date()) - (90 * 86400000);
+    }
+    console.log("Ending time is " + endingTime);
+    //res.json(endingTime);
+    Profit.find({
+        profitTime: {
+            $gte: endingTime
+        }
+    }, function (err, profits) {
+        if (err) {
+            response.data = err;
+            response.code = 299;
+            response.message = "Error in Getting Transactions";
+            //res.json(response);
+            console.log("Error is " + err);
+        }
+        else {
+            var sendingProfit = 0;
+            var receivingProfit = 0;
+            var totalProfit = 0;
+            profits.forEach(function (element) {
+                totalProfit += element.profitTotal;
+                if (element.profitType == "SELL") {
+                    sendingProfit += element.profitTotal;
+                }
+                else {
+                    receivingProfit += element.profitTotal;
+                }
+            }, this);
+            var obj = new Object();
+            obj.sendingProfit = sendingProfit;
+            obj.receivingProfit = receivingProfit;
+            obj.totalProfit = totalProfit;
+            response.data = obj;
+            response.code = 200;
+            response.message = "Success";
+            res.json(response);
+            console.log("Response is " + response);
+        }
+    });
 });
 
 module.exports = router;
