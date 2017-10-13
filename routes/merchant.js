@@ -1003,7 +1003,7 @@ getProfitStatisticsByTimeRoute.post(function (req, res) {
     var endingTime = "";
     console.log("Starting Time is " + startingTime);
     if (req.body.filterTime == 1) {
-        //endingTime = Math.floor(new Date()) - 86400000;
+        endingTime = Math.floor(new Date()) - 86400000;
     }
     else if (req.body.filterTime == 2) {
         endingTime = Math.floor(new Date()) - (7 * 86400000);
