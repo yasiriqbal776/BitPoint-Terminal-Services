@@ -821,7 +821,7 @@ createBitPointProfitWalletRoute.post(function (req, res) {
                 var krakenSecret = merchant.krakenAPISecret;
                 const KrakenClient = require('kraken-api');
                 const kraken = new KrakenClient(krakenKey, krakenSecret);
-                kraken.api('Withdraw', { asset: 'XXBT', key: req.body.bitpointProfitWalletKrakenBenificiaryKey, amount: 0.0001 }, function (error, data) {
+                kraken.api('Withdraw', { asset: 'XXBT', key: req.body.bitpointProfitWalletKrakenBenificiaryKey, amount: 0.00500 }, function (error, data) {
                     if (error) {
                         response.code = 407;
                         response.message = error.message;
