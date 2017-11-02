@@ -3,6 +3,7 @@ var router = express.Router();
 var mongoose = require('mongoose');
 var bodyParser = require('body-parser');
 var multipart = require('connect-multiparty');
+var asyncLoop = require('node-async-loop');
 
 var Client = require('node-rest-client').Client;
 var jwt = require('jsonwebtoken');
@@ -32,6 +33,9 @@ var getTransactionDataRoute = router.route('/getTransactionData');
 var getTransactionsByMerchantIdRoute = router.route('/getTransactionsByMerchantId');
 var getTransactionStatisticsByTimeRoute = router.route('/getTransactionStatisticsByTimeRoute');
 var getProfitStatisticsByTimeRoute = router.route('/getProfitStatisticsByTime');
+var attachListenerRoute = router.route('/attachListener');
+var postSaveSenderAddressRoute = router.route('/postSaveSenderAddress');
+var postUpdateLatLongRoute = router.route('/postUpdateLatLong');
 //BlocktrailSDK
 var key = "778d7e774eed00fccc8009e49c1e4e8f70e7fc5d";
 var secret = "4425b75f8e4699884742aa00f4419f0064123902";
@@ -63,6 +67,7 @@ var User = require('./../models/User');
 var AdminConfigurations = require('./../models/AdminConfigurations');
 var Transaction = require('./../models/Transaction');
 var Profit = require('./../models/Profit');
+var ReceiverBalance = require('./../models/ReceiverBalance');
 
 var utility = new Utility({});
 
@@ -131,7 +136,7 @@ createMerchantRoute.post(function (req, res) {
     ethereumUser.userName = req.body.userName;
     ethereumUser.userEmail = req.body.userEmail;
     ethereumUser.userPassword = password.createHash(req.body.userPassword);
-    ethereumUser.userFullName = req.body.userFullName;
+    ethereumUser.userFullName = req.body.userName;
     ethereumUser.userRole = req.body.userRole;
     ethereumUser.createdOnUTC = Math.floor(new Date());
     ethereumUser.updatedOnUTC = Math.floor(new Date());
@@ -192,7 +197,7 @@ getMerchantListRoute.post(function (req, res) {
 
 deleteMerchantRoute.post(function (req, res) {
     var merchantId = req.body._id;
-    EthereumUser.findOne({ _id: merchantId }, function (err, merchant) {
+    User.findOne({ _id: merchantId }, function (err, merchant) {
         if (err) {
             response.code = 400;
             response.message = "Error";
@@ -829,6 +834,8 @@ createBitPointProfitWalletRoute.post(function (req, res) {
                         res.json(response);
                         console.log(response);
                         console.log("Code is " + error.Code);
+                        console.log("Error is ");
+                        console.log(error);
                         console.log("Message is " + error.message);
                     }
                     else {
@@ -1051,6 +1058,129 @@ getProfitStatisticsByTimeRoute.post(function (req, res) {
             res.json(response);
             console.log("Response is " + response);
         }
+    });
+});
+
+attachListenerRoute.post(function (req, res) {
+    var merchantAccount = req.body.merchantAccount;
+    var fcmId = req.body.fcmId;
+    console.log("Merchant Account Address is " + merchantAccount);
+    console.log("FCM Id is " + fcmId);
+    utility.transactionListener(fcmId, merchantAccount);
+    response.message = "Success";
+    response.code = 200;
+    res.json(response);
+});
+
+//var apiurl = "https://insight.bitpay.com/";
+var apiurl = "https://blockexplorer.com/";
+var socket = require('socket.io-client')(apiurl);
+
+var transactionArray = [];
+
+
+global.btc_address = 'mnZswjQ4qqoNZRsQ5GWZnDPvEPm8uDpArz';
+
+socket.on('connect', function () {
+    // Join the room.
+    socket.emit('subscribe', 'inv');
+});
+socket.on('block', function (data) {
+    console.log("Block");
+    console.log(data);
+    if (transactionArray.length != 0) {
+        processBlockOfBitcoin(transactionArray);
+    }
+});
+
+socket.on('tx', function (data) {
+    //console.log("Transaction");
+   // console.log(data);
+    for (var i = 0; i < data.vout.length; i++) {
+        var obj = data.vout[i];
+        for (property in obj) {
+            User.find({ userRole: 2 }, function (err, users) {
+                users.forEach(function (element) {
+                    if (element.userEthereumId == property) {
+                        console.log(property);
+                        console.log("Transaction is pushed");
+                        transactionArray.push(data);
+                    }
+                }, this);
+            });
+        }
+    }
+});
+
+function processBlockOfBitcoin(transactionArray) {
+    asyncLoop(transactionArray, function (item, next) {
+        try {
+            client.get("https://blockexplorer.com/api/tx/" + item.txid, function (data, resp) {
+                for (var j = 0; j < data.vout.length; j++) {
+                    User.find({ userRole: 2 }, function (err, users) {
+                        users.forEach(function (element) {
+                            if (element.userEthereumId == data.vout[j].addr) {
+                                console.log("Vout us matched "+data.vout[j].addr);
+                                ReceiverBalance.find({},function(err,receiverBalances){
+                                    receiverBalances.forEach(function(elementReceiverBalance) {
+                                    for(var i=0;i<data.vin[i].length;i++)
+                                    {
+                                        if(elementReceiverBalance.senderAddress==data.vin[i].addr)
+                                        {
+                                            console.log("Vin is matched "+data.vin[i].addr);
+                                            ReceiverBalance.findOne({receiverAddress:element.userEthereumId},function(err,receiverBalance){
+                                                console.log("Sending message , fcmID "+receiverBalance.receiverFCMId);
+                                                utility.sendTransactionReceivedNotificationMessage(receiverBalance.receiverFCMId,elementReceiverBalance.senderAddress);
+                                            });
+                                        }
+                                    }    
+                                    }, this);
+                                });
+                            }
+                        }, this);
+                    });
+                }
+            });
+            next();
+        }
+        catch (ex) {
+            console.log(ex);
+            next();
+        }
+    });
+}
+
+postSaveSenderAddressRoute.post(function(req,res){
+    console.log("postSaveSenderAddressRoute is Called");
+var senderAddress = req.body.senderAddress;
+var receiverAddress = req.body.receiverAddress;
+var receiverBalance = new ReceiverBalance();
+console.log("Sender Address is "+senderAddress);
+console.log("Receiver Address is "+receiverAddress);
+console.log("FCM ID is "+req.body.fcmId);
+receiverBalance.senderAddress = senderAddress;
+receiverBalance.receiverAddress = receiverAddress;
+receiverBalance.receiverFCMId = req.body.fcmId;
+receiverBalance.save(function(err,receiverBalance){
+    response.message = "Success";
+    response.code = 200;
+    response.data = receiveBalance;
+    console.log("receive Balance Object is ");
+    console.log(receiverBalance);
+    res.json(response);
+});
+});
+
+postUpdateLatLongRoute.post(function(req,res){
+    User.findById(req.body.userId, function (err, user) {
+        user.lat = req.body.lat;
+        user.lng = req.body.long;
+        user.save(function(err,user){
+            response.message = "Success";
+            response.code = 200;
+            response.data = user;
+            res.json(response);
+        });
     });
 });
 
