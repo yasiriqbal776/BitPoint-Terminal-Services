@@ -36,6 +36,7 @@ var getProfitStatisticsByTimeRoute = router.route('/getProfitStatisticsByTime');
 var attachListenerRoute = router.route('/attachListener');
 var postSaveSenderAddressRoute = router.route('/postSaveSenderAddress');
 var postUpdateLatLongRoute = router.route('/postUpdateLatLong');
+var getTestTransactionDataRoute = router.route('/getTestTransactionData');
 //BlocktrailSDK
 var key = "778d7e774eed00fccc8009e49c1e4e8f70e7fc5d";
 var secret = "4425b75f8e4699884742aa00f4419f0064123902";
@@ -52,7 +53,8 @@ var krakenSecret = "4NuPL2wAzVoa4FrT29BFUgN8AqR3MxUBlM44xwoZKemaFWxkagux0U0TEU8y
 var krakenClient = require('kraken-api');
 var kraken = new krakenClient(krakenKey, krakenSecret);
 
-
+// web client
+var webClient = new Client();
 //SOCKET
 var apiurl = "https://blockexplorer.com/";
 //var socket = require('socket.io-client')(apiurl);
@@ -1092,22 +1094,34 @@ socket.on('block', function (data) {
         processBlockOfBitcoin(transactionArray);
     }
 });
+var userArray = [];
+var receiverUserArray = [];
+User.find({ userRole: 2 }, function (err, users) {
+    userArray = users;
+});
+ReceiverBalance.find({}, function (err, receiverBalances) {
+    receiverUserArray = receiverBalances;
+});
 
 socket.on('tx', function (data) {
     //console.log("Transaction");
-   // console.log(data);
+    //console.log(data);
     for (var i = 0; i < data.vout.length; i++) {
         var obj = data.vout[i];
         for (property in obj) {
-            User.find({ userRole: 2 }, function (err, users) {
-                users.forEach(function (element) {
-                    if (element.userEthereumId == property) {
-                        console.log(property);
-                        console.log("Transaction is pushed");
-                        transactionArray.push(data);
-                    }
-                }, this);
-            });
+            //console.log("Property is "+property);
+            var checkUser = userArray.find(x => x.userEthereumId == property);
+            if (checkUser !== undefined) {
+                if (property == '34Cdzfg8pEaadbTf1MTnHqi9ughZ5fVkrV') {
+                    console.log("Element User EthereumId is " + checkUser.userEthereumId);
+                    console.log("From transaction , address is " + property);
+                }
+                if (checkUser.userEthereumId == property) {
+                    console.log(property);
+                    console.log("*****************************************Transaction is pushed******************************");
+                    transactionArray.push(data);
+                }
+            }
         }
     }
 });
@@ -1115,32 +1129,33 @@ socket.on('tx', function (data) {
 function processBlockOfBitcoin(transactionArray) {
     asyncLoop(transactionArray, function (item, next) {
         try {
-            client.get("https://blockexplorer.com/api/tx/" + item.txid, function (data, resp) {
+            console.log("Item Transaction Id is " + item.txid);
+            processBlockExplorerData(item.txid);
+            /*webClient.get("https://blockexplorer.com/api/tx/" + item.txid, function (data, resp) {
+                console.log("Item is ");
+                console.log(item);
+                console.log("Data from blockxplorer transaction is ");
+                console.log(data);
                 for (var j = 0; j < data.vout.length; j++) {
-                    User.find({ userRole: 2 }, function (err, users) {
-                        users.forEach(function (element) {
-                            if (element.userEthereumId == data.vout[j].addr) {
-                                console.log("Vout us matched "+data.vout[j].addr);
-                                ReceiverBalance.find({},function(err,receiverBalances){
-                                    receiverBalances.forEach(function(elementReceiverBalance) {
-                                    for(var i=0;i<data.vin[i].length;i++)
-                                    {
-                                        if(elementReceiverBalance.senderAddress==data.vin[i].addr)
-                                        {
-                                            console.log("Vin is matched "+data.vin[i].addr);
-                                            ReceiverBalance.findOne({receiverAddress:element.userEthereumId},function(err,receiverBalance){
-                                                console.log("Sending message , fcmID "+receiverBalance.receiverFCMId);
-                                                utility.sendTransactionReceivedNotificationMessage(receiverBalance.receiverFCMId,elementReceiverBalance.senderAddress);
-                                            });
-                                        }
-                                    }    
-                                    }, this);
-                                });
-                            }
-                        }, this);
-                    });
+                    var checkUser = userArray.find(x => x.userEthereumId == data.vout[j].addr);
+                    if (checkUser !== undefined) {
+                        console.log("Vout us matched " + data.vout[j].addr);
+                        ReceiverBalance.find({}, function (err, receiverBalances) {
+                            receiverBalances.forEach(function (elementReceiverBalance) {
+                                for (var i = 0; i < data.vin[i].length; i++) {
+                                    if (elementReceiverBalance.senderAddress == data.vin[i].addr) {
+                                        console.log("Vin is matched " + data.vin[i].addr);
+                                        ReceiverBalance.findOne({ receiverAddress: element.userEthereumId }, function (err, receiverBalance) {
+                                            console.log("Sending message , fcmID " + receiverBalance.receiverFCMId);
+                                            utility.sendTransactionReceivedNotificationMessage(receiverBalance.receiverFCMId, elementReceiverBalance.senderAddress);
+                                        });
+                                    }
+                                }
+                            }, this);
+                        });
+                    }
                 }
-            });
+            });*/
             next();
         }
         catch (ex) {
@@ -1150,32 +1165,33 @@ function processBlockOfBitcoin(transactionArray) {
     });
 }
 
-postSaveSenderAddressRoute.post(function(req,res){
+postSaveSenderAddressRoute.post(function (req, res) {
     console.log("postSaveSenderAddressRoute is Called");
-var senderAddress = req.body.senderAddress;
-var receiverAddress = req.body.receiverAddress;
-var receiverBalance = new ReceiverBalance();
-console.log("Sender Address is "+senderAddress);
-console.log("Receiver Address is "+receiverAddress);
-console.log("FCM ID is "+req.body.fcmId);
-receiverBalance.senderAddress = senderAddress;
-receiverBalance.receiverAddress = receiverAddress;
-receiverBalance.receiverFCMId = req.body.fcmId;
-receiverBalance.save(function(err,receiverBalance){
-    response.message = "Success";
-    response.code = 200;
-    response.data = receiveBalance;
-    console.log("receive Balance Object is ");
-    console.log(receiverBalance);
-    res.json(response);
-});
+    var senderAddress = req.body.senderAddress;
+    var receiverAddress = req.body.receiverAddress;
+    var receiverBalance = new ReceiverBalance();
+    console.log("Sender Address is " + senderAddress);
+    console.log("Receiver Address is " + receiverAddress);
+    console.log("FCM ID is " + req.body.fcmId);
+    receiverBalance.senderAddress = senderAddress;
+    receiverBalance.receiverAddress = receiverAddress;
+    receiverBalance.receiverFCMId = req.body.fcmId;
+    receiverBalance.save(function (err, receiverBalance) {
+        response.message = "Success";
+        response.code = 200;
+        response.data = receiverBalance;
+        console.log("receive Balance Object is ");
+        console.log(receiverBalance);
+        receiverUserArray.push(receiverBalance);
+        res.json(response);
+    });
 });
 
-postUpdateLatLongRoute.post(function(req,res){
+postUpdateLatLongRoute.post(function (req, res) {
     User.findById(req.body.userId, function (err, user) {
         user.lat = req.body.lat;
         user.lng = req.body.long;
-        user.save(function(err,user){
+        user.save(function (err, user) {
             response.message = "Success";
             response.code = 200;
             response.data = user;
@@ -1183,5 +1199,40 @@ postUpdateLatLongRoute.post(function(req,res){
         });
     });
 });
+
+function processBlockExplorerData(transactionId) {
+    console.log("processBlockExplorerData is called");
+    webClient.get("https://blockexplorer.com/api/tx/" + transactionId, function (data, resp) {
+        console.log("Data from blockxplorer transaction is ");
+        console.log(data);
+        for (var j = 0; j < data.vout.length; j++) {
+            console.log("data.vout.lenghth is "+data.vout.length);
+            var voutAddressesFromTransaction = data.vout[j].scriptPubKey.addresses;
+            console.log(voutAddressesFromTransaction);
+            for (var addressCount = 0; addressCount < voutAddressesFromTransaction.length; addressCount=addressCount+1) {
+                var checkUser = userArray.find(x => x.userEthereumId == voutAddressesFromTransaction[addressCount]);
+                if (checkUser !== undefined) {
+                    console.log("Check user is defined");
+                    console.log("Vin length is "+data.vin.length);
+                    for (var i = 0; i < data.vin.length; i++) {
+                        console.log("Data.vin is "+data.vin[i].addr);
+                        var receivedUser = receiverUserArray.find(x => x.senderAddress == data.vin[i].addr);
+                        if (receivedUser != undefined) {
+                            console.log("Vin is matched " + data.vin[i].addr);
+                            console.log("Sending message , fcmID " + receivedUser.receiverFCMId);
+                            utility.sendTransactionReceivedNotificationMessage(receivedUser.receiverFCMId, receivedUser.senderAddress,data.vout[j].value);
+                        }
+                    }
+                }
+                console.log("Value of AddressCount is "+addressCount);
+            }
+        }
+    });
+}
+
+getTestTransactionDataRoute.get(function(req,res){
+processBlockExplorerData(req.query.transactionId);
+});
+
 
 module.exports = router;

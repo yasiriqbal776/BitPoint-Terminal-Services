@@ -114,18 +114,23 @@ UtilityFile.prototype.sendPushNotificationMessage = function (fcmId, transaction
 /**
 * Sending Push Notification through FCM
 */
-UtilityFile.prototype.transactionListener = function sendTransactionReceivedNotificationMessage(fcmId, senderAddress) {
+UtilityFile.prototype.sendTransactionReceivedNotificationMessage = function (fcmId, senderAddress,amount) {
+    var obj = new Object();
+    obj.senderAddress = senderAddress;
+    obj.amount = amount;
     var message = { //this may vary according to the message type (single recipient, multicast, topic, et cetera) 
         to: fcmId,
-
         data: {  //you can send only notification or only data(or include both) 
-            message: "You Recieved   bitcoins (BTC) from "+senderAddress,
-            data: null,
+            message: "You Recieved "+amount+" bitcoins (BTC) from "+senderAddress,
+            data: obj,
             type: "transactionReceived"
         }
     };
+    console.log("Data is ");
+    console.log(obj);
     console.log(message);
     console.log("FCM Sending");
+    console.log("FCM ID is "+fcmId);
     fcm.send(message, function (err, response) {
         if (err) {
             console.log("Something has gone wrong!");
