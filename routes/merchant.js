@@ -4,6 +4,7 @@ var mongoose = require('mongoose');
 var bodyParser = require('body-parser');
 var multipart = require('connect-multiparty');
 var asyncLoop = require('node-async-loop');
+var WAValidator = require('wallet-address-validator');
 
 var Client = require('node-rest-client').Client;
 var jwt = require('jsonwebtoken');
@@ -721,6 +722,7 @@ updateUserKrakenSetupRoute.post(function (req, res) {
         else {
             merchant.krakenAPIKey = req.body.krakenAPIKey;
             merchant.krakenAPISecret = req.body.krakenAPISecret;
+            merchant.useKraken=true;
             merchant.save(function (err, merchant) {
                 response.data = merchant;
                 response.message = "Success";
@@ -843,13 +845,26 @@ createMerchantProfitWalletRoute.post(function (req, res) {
                     else {
                         console.log("Kraken is setup t0 false");
                         merchant.profitWalletAddress = req.body.profitWalletAddress;
-                        merchant.save(function (err, merchant) {
-                            response.code = 200;
-                            response.message = "Success";
-                            response.data = merchant;
+                        var valid = WAValidator.validate(req.body.profitWalletAddress, 'BTC');
+                        if(valid)
+                        {
+                            console.log('This is a valid address');
+                            merchant.save(function (err, merchant) {
+                                response.code = 200;
+                                response.message = "Success";
+                                response.data = merchant;
+                                res.json(response);
+                                console.log(response);
+                            });
+                        }
+                        else
+                        {
+                            response.code = 203;
+                            response.message = "INVALID ADDRESS";
+                            response.data = null;
                             res.json(response);
                             console.log(response);
-                        });
+                        }
                     }
                 }
 
@@ -913,19 +928,33 @@ createBitPointProfitWalletRoute.post(function (req, res) {
                 }
                 else {
                     merchant.bitpointProfitWalletAddress = req.body.bitpointProfitWalletAddress;
-                    merchant.save(function (err, merchant) {
-                        if (err) {
-                            
-                        }
-                        else
-                        {
-                            response.code = 200;
-                            response.message = "Success";
-                            response.data = merchant;
-                            res.json(response);
-                            console.log(response);
-                        }
-                    })
+                    var valid = WAValidator.validate(req.body.bitpointProfitWalletAddress, 'BTC');
+                    if(valid)
+                    {
+                        console.log('This is a valid address');
+                        merchant.save(function (err, merchant) {
+                            if (err) {
+                                
+                            }
+                            else
+                            {
+                                response.code = 200;
+                                response.message = "Success";
+                                response.data = merchant;
+                                res.json(response);
+                                console.log(response);
+                            }
+                        })
+                    }
+                    else
+                    {
+                        console.log('Address INVALID');
+                        response.code = 203;
+                        response.message = "INVALID ADDRESS";
+                        response.data = null;
+                        res.json(response);
+                        console.log(response);
+                    }
                 }
             }
         }
@@ -1307,21 +1336,95 @@ getTestTransactionDataRoute.get(function (req, res) {
 postUpdateUseKrakenRoute.post(function (req, res) {
     User.findOne({ _id: req.body.merchantId }, function (err, merchant) {
         merchant.useKraken = req.body.useKraken;
-        merchant.save(function (err, merchant) {
-            if (err) {
-                response.data = err;
-                response.code = 299;
-                response.message = "Error setting Kraken use";
+        var useKraken = req.body.useKraken;
+        console.log("Use Kraken is "+useKraken);
+        if(useKraken==true)
+        {
+            console.log("Kraken APi is "+merchant.krakenAPIKey);
+            console.log("Kraken APi Secret  is "+merchant.krakenAPISecret);
+            if(merchant.krakenAPIKey==null || merchant.krakenAPISecret==null || merchant.krakenAPISecret=="" ||merchant.krakenAPIKey=="")
+            {
+                console.log("Kraken Keys are empty");
+                response.data = null;
+                response.code = 297;
+                response.message = "Please set Kraken First";
                 res.json(response);
                 console.log("Error is " + err);
             }
-            else {
-                response.message = "Success";
-                response.code = 200;
-                response.data = merchant;
+            else if(merchant.profitWalletAddress==null ||merchant.profitWalletAddress=="" )
+            {
+                console.log("Profit Wallet Address is Empty");
+                response.data = null;
+                response.code = 296;
+                response.message = "Profit Wallet Address is Empty";
                 res.json(response);
+                console.log("Error is " + err);
             }
-        });
+            else if(merchant.profitWalletKrakenBenificiaryKey==null ||merchant.profitWalletKrakenBenificiaryKey=="")
+            {
+                console.log("Profit Wallet Benificiary is Empty");
+                response.data = null;
+                response.code = 296;
+                response.message = "Profit Wallet Benificiary is not set";
+                res.json(response);
+                console.log("Error is " + err);
+            }
+            else if(merchant.bitpointProfitWalletAddress==null ||merchant.bitpointProfitWalletAddress=="")
+            {
+                console.log("Bitpoint Wallet Address is Empty");
+                response.data = null;
+                response.code = 296;
+                response.message = "Bitpoint Wallet Address is not set";
+                res.json(response);
+                console.log("Error is " + err);
+            }
+            else if(merchant.profitWalletKrakenBenificiaryKey==null ||merchant.profitWalletKrakenBenificiaryKey=="")
+            {
+                console.log("Profit Wallet Benificiary is Empty");
+                response.data = null;
+                response.code = 296;
+                response.message = "Profit Wallet Benificiary is not set";
+                res.json(response);
+                console.log("Error is " + err);
+            }
+            else
+            {
+                merchant.save(function (err, merchant) {
+                    if (err) {
+                        response.data = err;
+                        response.code = 299;
+                        response.message = "Error setting Kraken use";
+                        res.json(response);
+                        console.log("Error is " + err);
+                    }
+                    else {
+                        response.message = "Success";
+                        response.code = 200;
+                        response.data = merchant;
+                        res.json(response);
+                    }
+                });
+            }
+        }
+        else
+        {
+            console.log("ELSE ----------");
+            merchant.save(function (err, merchant) {
+                if (err) {
+                    response.data = err;
+                    response.code = 299;
+                    response.message = "Error setting Kraken use";
+                    res.json(response);
+                    console.log("Error is " + err);
+                }
+                else {
+                    response.message = "Success";
+                    response.code = 200;
+                    response.data = merchant;
+                    res.json(response);
+                }
+            });
+        }
     });
 });
 
