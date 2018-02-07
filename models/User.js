@@ -14,23 +14,24 @@ var UserSchema = new mongoose.Schema({
     userFullName: String,
     userContactNumber: String,
     userPassword: String,
-    userEthereumId: String,
+    userBtcId: String,
     hotWalletBenificiaryKey: String,
     userProfileStatus: Number,
     krakenAPIKey:String,
     krakenAPISecret:String,
     userAddress: String,
     userOccupation: String,
+    hotWalletBalance:String,
     userAddress: String,
     userProfilePictureURL: String,
-    ethereumUserApplicationToken: String,
-    ethereumUserPasscode: String,
-    ethereumUserPasscodeStatus: Number,
-    ethereumUserLoginDetail: Object,
+    BtcUserApplicationToken: String,
+    BtcUserPasscode: String,
+    BtcUserPasscodeStatus: Number,
+    BtcUserLoginDetail: Object,
     transactionsByDays: Object,
     top2Transactions: Object,
-    ethereumUserDoubleAuthenticationMode: Number,
-    ethereumUserNotificationStatus: Number,
+    BtcUserDoubleAuthenticationMode: Number,
+    BtcUserNotificationStatus: Number,
     userGCM: String,
     isEmailVerified: { type: Boolean, default: false },
     createdOnUTC: String,
@@ -67,4 +68,4 @@ var UserSchema = new mongoose.Schema({
 });
 
 // Export the Mongoose model
-module.exports = mongoose.model('EthereumUser', UserSchema);
+module.exports = mongoose.model('BtcUser', UserSchema);

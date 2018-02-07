@@ -5,6 +5,7 @@ var bodyParser = require('body-parser');
 var multipart = require('connect-multiparty');
 var asyncLoop = require('node-async-loop');
 var WAValidator = require('wallet-address-validator');
+var cron = require('node-cron');
 
 var Client = require('node-rest-client').Client;
 var jwt = require('jsonwebtoken');
@@ -15,6 +16,7 @@ var blocktrail = require('blocktrail-sdk');
 var multipartMiddleware = multipart();
 
 var adminLoginRoute = router.route('/adminLogin');
+var postChangePassword = router.route('/changePassword');
 var createMerchantRoute = router.route('/createMerchant');
 var getMerchantListRoute = router.route('/getListOfMerchants');
 var deleteMerchantRoute = router.route('/deleteMerchant');
@@ -40,6 +42,8 @@ var postUpdateLatLongRoute = router.route('/postUpdateLatLong');
 var getTestTransactionDataRoute = router.route('/getTestTransactionData');
 var postUpdateUseKrakenRoute = router.route('/updateUseKraken');
 var sendEmailRoute = router.route('/sendEmail');
+var sendUnConfirmedTransactionNofyification = router.route('/sendUnConfirmedTransactionNofyification');
+var sendConfirmedTransactionNofyification = router.route('/sendConfirmedTransactionNofyification');
 //BlocktrailSDK
 var key = "778d7e774eed00fccc8009e49c1e4e8f70e7fc5d";
 var secret = "4425b75f8e4699884742aa00f4419f0064123902";
@@ -97,30 +101,86 @@ mongoose.connect(url, function (err, db) {
     }
 });
 
+postChangePassword.post(function (req, res) {
+    var response = new Response();
+    var oldPassword = req.body.oldPassword;
+    var newPassword = req.body.newPassword;
+    var _userId = req.body.userId;
+    var passCode = req.body.passCode;
+    if (oldPassword && newPassword) {
+        if (oldPassword == newPassword) {
+            response.code = 100;
+            response.message = "New password cannot be same as old";
+            res.json(response);
+        } else {
+            //here handle to change password
+            User.findOne({ _id: _userId }, function (err, user) {
+                if (user == null) {
+                    response.code = 400;
+                    response.message = "User Does not exists";
+                    res.json(response);
+                } else {
+                    user.userPassword = password.createHash(newPassword);
+                    user.save(function (err, resp) {
+                        if (err) {
+                            response.code = 500;
+                            response.message = "Internal error";
+                            res.json(response);
+                            console.log(err);
+                        } else {
+                            response.code = 200;
+                            response.message = "Password Updated Successfully";
+                            res.json(response);
+                        }
+                    });
+                } //end of else
+            });
+        } //end of else for changing password
+    } else {
+        response.code = 300;
+        response.message = "Params cannot be null";
+        res.json(response);
+    }
+});
+
 adminLoginRoute.post(function (req, res) {
     var userName = req.body.userName;
     var userPassword = req.body.userPassword;
     User.findOne({ userName: userName }, function (err, user) {
         if (err) {
             console.log(err);
-        }
-        else {
+        } else {
             if (user != null) {
                 var validate = password.validateHash(user.userPassword, req.body.userPassword);
                 if (validate == true) {
                     response.message = "Success";
                     response.code = 200;
-                    response.data = user;
-                    res.json(response);
-                }
-                else {
+                    client.address(user.userBtcId, function (err, address) {
+                        if (err) {
+                            response.data = null;
+                            response.message = "Error in Getting Address";
+                            response.code = 505;
+                            res.json(err);
+                        } else {
+                            console.log("Customer address is ");
+                            console.log(address);
+                            console.log("Customer Balance is " + address.balance);
+                            user.hotWalletBalance = parseFloat(address.balance) / 100000000;
+                            user.save(function (err, user) {
+                                response.data = user;
+                                console.log("User is");
+                                console.log(user);
+                                res.json(response);
+                            });
+                        }
+                    });
+                } else {
                     response.message = "Invalid User Name or Password";
                     response.code = serverMessage.returnPasswordMissMatch();
                     response.data = null;
                     res.json(response);
                 }
-            }
-            else {
+            } else {
                 response.message = "User Does not Exist";
                 response.code = serverMessage.returnPasswordMissMatch();
                 response.data = null;
@@ -131,21 +191,22 @@ adminLoginRoute.post(function (req, res) {
 });
 
 createMerchantRoute.post(function (req, res) {
-    var ethereumUser = new User();
-    ethereumUser.userName = req.body.userName;
-    ethereumUser.userEmail = req.body.userEmail;
-    ethereumUser.userPassword = password.createHash(req.body.userPassword);
-    ethereumUser.userFullName = req.body.userName;
-    ethereumUser.userRole = req.body.userRole;
-    ethereumUser.createdOnUTC = Math.floor(new Date());
-    ethereumUser.updatedOnUTC = Math.floor(new Date());
-    ethereumUser.minimumHotWalletBalance = 0.25;
-    ethereumUser.maximumHotWalletBalance = 0.50;
-    ethereumUser.merchantProfit = 0;
-    ethereumUser.merchantProfitMargin = 10;
-    ethereumUser.useKraken = false;
-    console.log("USer Password for Wallet Creation is " + ethereumUser.userPassword);
-    client.createNewWallet(ethereumUser.userName, ethereumUser.userPassword, function (err, wallet, backupInfo) {
+    console.log("Create Merchant");
+    var BtcUser = new User();
+    BtcUser.userName = req.body.userName;
+    BtcUser.userEmail = req.body.userEmail;
+    BtcUser.userPassword = password.createHash(req.body.userPassword);
+    BtcUser.userFullName = req.body.userName;
+    BtcUser.userRole = req.body.userRole;
+    BtcUser.createdOnUTC = Math.floor(new Date());
+    BtcUser.updatedOnUTC = Math.floor(new Date());
+    BtcUser.minimumHotWalletBalance = 0.25;
+    BtcUser.maximumHotWalletBalance = 0.50;
+    BtcUser.merchantProfit = 0;
+    BtcUser.merchantProfitMargin = 10;
+    BtcUser.useKraken = false;
+    console.log("USer Password for Wallet Creation is " + BtcUser.userPassword);
+    client.createNewWallet(BtcUser.userName, BtcUser.userPassword, function (err, wallet, backupInfo) {
         console.log("Wallet ");
         console.log(wallet);
         console.log("BackupInfo");
@@ -154,22 +215,22 @@ createMerchantRoute.post(function (req, res) {
             console.log(err.message);
             console.log(err.code);
             response.code = err.code;
-            response.message = err.message;
+            response.message = "Hot Wallet with this identifeier exists. Please try a different user name";
             res.json(response);
-        }
-        else {
-            client.initWallet(ethereumUser.userName, ethereumUser.userPassword, function (err, wallet) {
+        } else {
+            client.initWallet(BtcUser.userName, BtcUser.userPassword, function (err, wallet) {
                 console.log("wallet after Initializing ");
                 console.log(wallet);
                 wallet.getNewAddress(function (err, address) {
                     console.log("Address");
                     console.log(address);
                     //global.addressArray.push(address);
-                    ethereumUser.userEthereumId = address;
-                    ethereumUser.save(function (err, ethereumUser) {
+                    BtcUser.userBtcId = address;
+                    BtcUser.hotWalletBalance = 0;
+                    BtcUser.save(function (err, BtcUser) {
                         response.code = 200;
                         response.message = "Successfully Created";
-                        response.data = ethereumUser;
+                        response.data = BtcUser;
                         res.json(response);
                     });
                 });
@@ -185,8 +246,7 @@ getMerchantListRoute.post(function (req, res) {
             response.message = "Error";
             response.data = err;
             res.json(response);
-        }
-        else {
+        } else {
             response.code = 200;
             response.message = "Success";
             response.data = merchants;
@@ -203,15 +263,13 @@ deleteMerchantRoute.post(function (req, res) {
             response.message = "Error";
             response.data = err;
             res.json(response);
-        }
-        else {
+        } else {
             if (merchant == null) {
                 response.code = 500;
                 response.message = "Merchant does not exist";
                 response.data = null;
                 res.json(response);
-            }
-            else {
+            } else {
                 merchant.remove();
                 response.code = 200;
                 response.message = "Success";
@@ -230,23 +288,21 @@ sendBalance.post(function (req, res) {
     var amountToSend = blocktrail.toSatoshi(amount);
     var merchantUserName = req.body.merchantUserName;
     console.log("Merchant User Name is " + merchantUserName);
-    User.findOne({ userName: merchantUserName }, function (err, ethereumUser) {
-        if (ethereumUser == null) {
+    User.findOne({ userName: merchantUserName }, function (err, BtcUser) {
+        if (BtcUser == null) {
             response.data = null;
             response.message = "Merchant does not exist";
             response.code = 500;
             console.log(response);
             res.json(response);
-        }
-        else {
-            client.address(ethereumUser.userEthereumId, function (err, address) {
+        } else {
+            client.address(BtcUser.userBtcId, function (err, address) {
                 if (err) {
                     response.data = null;
                     response.message = "Error in Getting Address";
                     response.code = 505;
                     res.json(err);
-                }
-                else {
+                } else {
                     console.log("Customer address is ");
                     console.log(address);
                     var hotWalletBalance = address.balance - amountToSend;
@@ -258,9 +314,8 @@ sendBalance.post(function (req, res) {
                         response.data = address.balance;
                         console.log(response);
                         res.json(response);
-                    }
-                    else {
-                        client.initWallet(ethereumUser.userName, ethereumUser.userPassword, function (err, wallet) {
+                    } else {
+                        client.initWallet(BtcUser.userName, BtcUser.userPassword, function (err, wallet) {
                             if (err) {
                                 response.code = 295;
                                 response.message = err.message;
@@ -268,8 +323,7 @@ sendBalance.post(function (req, res) {
                                 res.json(response);
                                 console.log("Error in Initializing Wallet is ");
                                 console.log(err);
-                            }
-                            else {
+                            } else {
                                 console.log("Amount in Satoshi is" + amountToSend);
                                 console.log("Customer Address is");
                                 console.log(customerAddress);
@@ -277,7 +331,7 @@ sendBalance.post(function (req, res) {
                                 console.log(wallet);
                                 var obj = {};
                                 obj[customerAddress] = amountToSend;
-                                wallet.pay(obj, null, false, true, blocktrail.Wallet.FEE_STRATEGY_BASE_FEE, function (err, result) {
+                                wallet.pay(obj, null, false, true, blocktrail.Wallet.FEE_STRATEGY_OPTIMAL, function (err, result) {
                                     if (err) {
                                         response.data = err;
                                         response.message = "Could not Sent";
@@ -285,22 +339,22 @@ sendBalance.post(function (req, res) {
                                         console.log("Error is Wallet paying is ");
                                         console.log(err);
                                         res.json(response);
-                                    }
-                                    else {
+                                    } else {
                                         console.log("Result in paying to Customer Address from Wallet is");
                                         console.log(result);
                                         var krakenApi = require("kraken-api");
-                                        var krakenKey = ethereumUser.krakenAPIKey;
-                                        var krakenSecret = ethereumUser.krakenAPISecret;
+                                        var krakenKey = BtcUser.krakenAPIKey;
+                                        var krakenSecret = BtcUser.krakenAPISecret;
                                         const KrakenClient = require('kraken-api');
                                         const kraken = new KrakenClient(krakenKey, krakenSecret);
                                         var transaction = new Transaction();
-                                        transaction.merchantId = ethereumUser._id;
+                                        transaction.merchantId = BtcUser._id;
                                         transaction.customerAddress = customerAddress;
                                         transaction.sendingAmount = amount;
                                         transaction.transactionType = "SELL";
                                         transaction.transactionId = result;
                                         transaction.transactionTime = Math.floor(new Date());
+                                        transaction.status = "PENDING";
                                         transaction.save();
                                         response.data = result;
                                         response.code = 200;
@@ -308,7 +362,7 @@ sendBalance.post(function (req, res) {
                                         res.json(response);
                                         // Profit ENTRY
                                         var profit = new Profit();
-                                        profit.merchantId = ethereumUser._id;
+                                        profit.merchantId = BtcUser._id;
                                         profit.customerAddress = customerAddress;
                                         profit.profitTotal = req.body.merchantProfit;
                                         profit.transactionId = result;
@@ -316,17 +370,16 @@ sendBalance.post(function (req, res) {
                                         profit.profitType = "SELL";
                                         profit.save();
                                         // 
-                                        if (hotWalletBalance < ethereumUser.minimumHotWalletBalance) {
-                                            var sendingAmount = ethereumUser.maximumHotWalletBalance - hotWalletBalance;
-                                            if (ethereumUser.useKraken == true) {
-                                                kraken.api('Withdraw', { asset: 'XXBT', key: ethereumUser.hotWalletBenificiaryKey, amount: sendingAmount }, function (err, data) {
+                                        if (hotWalletBalance < BtcUser.minimumHotWalletBalance) {
+                                            var sendingAmount = BtcUser.maximumHotWalletBalance - hotWalletBalance;
+                                            if (BtcUser.useKraken == true) {
+                                                kraken.api('Withdraw', { asset: 'XXBT', key: BtcUser.hotWalletBenificiaryKey, amount: sendingAmount }, function (err, data) {
                                                     if (err) {
-                                                        response.message = "Kraken "+err.message;
+                                                        response.message = "Kraken " + err.message;
                                                         response.message = "Withdraw Error";
                                                         response.code = 770;
                                                         console.log(response);
-                                                    }
-                                                    else {
+                                                    } else {
                                                         response.data = data;
                                                         response.message = "Sent in Customer Hot Wallet from Kraken";
                                                         response.code = 200;
@@ -336,58 +389,54 @@ sendBalance.post(function (req, res) {
                                             }
                                         }
                                         // For Profit Setup
-                                        console.log("Mechant Profit before Add up is " + ethereumUser.merchantProfit);
+                                        console.log("Mechant Profit before Add up is " + BtcUser.merchantProfit);
                                         console.log("Merchant Profit from request is " + req.body.merchantProfit);
-                                        ethereumUser.merchantProfit += req.body.merchantProfit;
-                                        console.log("Mechant Profit after Add up is " + ethereumUser.merchantProfit);
-                                        if (ethereumUser.merchantProfit >= ethereumUser.merchantProfitThreshold) {
+                                        BtcUser.merchantProfit += req.body.merchantProfit;
+                                        console.log("Mechant Profit after Add up is " + BtcUser.merchantProfit);
+                                        if (BtcUser.merchantProfit >= BtcUser.merchantProfitThreshold) {
                                             AdminConfigurations.findOne({}, function (err, adminConfiguration) {
-                                                var merchantProfitToSend = ((ethereumUser.merchantProfit * adminConfiguration.merchantProfit) / 100);
+                                                var merchantProfitToSend = ((BtcUser.merchantProfit * adminConfiguration.merchantProfit) / 100);
                                                 console.log("Profit to send to Merchant is " + merchantProfitToSend);
-                                                var btmProfitToSend = ((ethereumUser.merchantProfit * adminConfiguration.bitpointProfit) / 100);
+                                                var btmProfitToSend = ((BtcUser.merchantProfit * adminConfiguration.bitpointProfit) / 100);
                                                 console.log("Profit to send to BTM WALLET is " + btmProfitToSend);
-                                                var newMerchantProfit = ethereumUser.merchantProfit;
-                                                if (ethereumUser.useKraken == true) {
-                                                    kraken.api('Withdraw', { asset: 'XXBT', key: ethereumUser.profitWalletKrakenBenificiaryKey, amount: merchantProfitToSend }, function (err, data) {
+                                                var newMerchantProfit = BtcUser.merchantProfit;
+                                                if (BtcUser.useKraken == true) {
+                                                    kraken.api('Withdraw', { asset: 'XXBT', key: BtcUser.profitWalletKrakenBenificiaryKey, amount: merchantProfitToSend }, function (err, data) {
                                                         if (err) {
-                                                            response.message = "Kraken "+err.message;
+                                                            response.message = "Kraken " + err.message;
                                                             response.message = "Error in Sending Profit to Merchant Profit Wallet";
                                                             response.code = 770;
                                                             console.log(response);
-                                                        }
-                                                        else {
+                                                        } else {
                                                             response.data = data;
                                                             response.message = "Sent to Profit Wallet from Kraken";
                                                             response.code = 200;
                                                             console.log(response);
                                                         }
                                                     });
-                                                    kraken.api('Withdraw', { asset: 'XXBT', key: ethereumUser.bitpointProfitWalletKrakenBenificiaryKey, amount: btmProfitToSend }, function (err, data) {
+                                                    kraken.api('Withdraw', { asset: 'XXBT', key: BtcUser.bitpointProfitWalletKrakenBenificiaryKey, amount: btmProfitToSend }, function (err, data) {
                                                         if (err) {
                                                             response.data = err.message;
-                                                            response.message = "Kraken "+err.message;
+                                                            response.message = "Kraken " + err.message;
                                                             response.code = 770;
                                                             console.log(response);
-                                                        }
-                                                        else {
+                                                        } else {
                                                             response.data = data;
                                                             response.message = "Sent in BTM Profit Wallet from Kraken";
                                                             response.code = 200;
                                                             console.log(response);
                                                         }
                                                     });
-                                                }
-                                                else {
+                                                } else {
                                                     var objSendProfitToMerchant = {};
-                                                    objSendProfitToMerchant[ethereumUser.profitWalletAddress] = blocktrail.toSatoshi(merchantProfitToSend);
+                                                    objSendProfitToMerchant[BtcUser.profitWalletAddress] = blocktrail.toSatoshi(merchantProfitToSend);
                                                     wallet.pay(objSendProfitToMerchant, null, false, true, blocktrail.Wallet.FEE_STRATEGY_BASE_FEE, function (err, result) {
                                                         if (err) {
                                                             response.data = err.message;
                                                             response.message = "Error in Sending Profit to Merchant Profit Wallet";
                                                             response.code = 770;
                                                             console.log(response);
-                                                        }
-                                                        else {
+                                                        } else {
                                                             response.data = result;
                                                             response.message = "Sent to Profit Wallet from BlockTrail";
                                                             response.code = 200;
@@ -396,15 +445,14 @@ sendBalance.post(function (req, res) {
                                                     });
 
                                                     var objSendProfitToBitpointProfitWallet = {};
-                                                    objSendProfitToBitpointProfitWallet[ethereumUser.bitpointProfitWalletAddress] = blocktrail.toSatoshi(btmProfitToSend);
+                                                    objSendProfitToBitpointProfitWallet[BtcUser.bitpointProfitWalletAddress] = blocktrail.toSatoshi(btmProfitToSend);
                                                     wallet.pay(objSendProfitToBitpointProfitWallet, null, false, true, blocktrail.Wallet.FEE_STRATEGY_BASE_FEE, function (err, result) {
                                                         if (err) {
                                                             response.data = err.message;
                                                             response.message = "Error in Sending Profit to Bitpoint Profit Wallet";
                                                             response.code = 770;
                                                             console.log(response);
-                                                        }
-                                                        else {
+                                                        } else {
                                                             response.data = result;
                                                             response.message = "Sent to Bitpoint Profit Wallet from BlockTrail";
                                                             response.code = 200;
@@ -412,14 +460,13 @@ sendBalance.post(function (req, res) {
                                                         }
                                                     });
                                                 }
-                                                ethereumUser.merchantProfit = 0;
-                                                ethereumUser.save(function (err, ethereumUser) {
+                                                BtcUser.merchantProfit = 0;
+                                                BtcUser.save(function (err, BtcUser) {
 
                                                 });
                                             });
-                                        }
-                                        else {
-                                            ethereumUser.save(function (err, ethereumUser) {
+                                        } else {
+                                            BtcUser.save(function (err, BtcUser) {
 
                                             });
                                         }
@@ -446,15 +493,14 @@ receiveBalance.post(function (req, res) {
     console.log("Amount in Satoshi is " + amountToSend);
     var merchantUserName = req.body.merchantUserName;
     console.log("Merchant User Name is " + merchantUserName);
-    User.findOne({ userName: merchantUserName }, function (err, ethereumUser) {
-        if (ethereumUser == null) {
+    User.findOne({ userName: merchantUserName }, function (err, BtcUser) {
+        if (BtcUser == null) {
             response.data = null;
             response.message = "Merchant does not exist";
             response.code = 500;
             console.log(response);
             res.json(response);
-        }
-        else {
+        } else {
             client.address(customerAddress, function (err, address) {
                 if (err) {
                     response.data = null;
@@ -463,8 +509,7 @@ receiveBalance.post(function (req, res) {
                     console.log("Error in Getting Address");
                     console.log(err);
                     res.json(err);
-                }
-                else {
+                } else {
                     console.log("Customer address is ");
                     console.log(address);
                     console.log("Customer balance is " + address.balance);
@@ -475,8 +520,7 @@ receiveBalance.post(function (req, res) {
                         response.data = address.balance;
                         console.log(response);
                         res.json(response);
-                    }
-                    else {
+                    } else {
                         client.initWallet(walletName, walletPassword, function (err, wallet) {
                             if (err) {
                                 response.code = 295;
@@ -485,15 +529,14 @@ receiveBalance.post(function (req, res) {
                                 res.json(response);
                                 console.log("Error in Initializing Wallet is ");
                                 console.log(err);
-                            }
-                            else {
+                            } else {
                                 console.log("Amount in Satoshi is" + amountToSend);
                                 console.log("Customer Address is");
                                 console.log(customerAddress);
                                 console.log("Wallet is " + wallet);
                                 console.log(wallet);
                                 var obj = {};
-                                obj[ethereumUser.userEthereumId] = amountToSend;
+                                obj[BtcUser.userBtcId] = amountToSend;
                                 wallet.pay(obj, null, false, true, blocktrail.Wallet.FEE_STRATEGY_BASE_FEE, function (err, result) {
                                     if (err) {
                                         response.data = err;
@@ -502,17 +545,16 @@ receiveBalance.post(function (req, res) {
                                         console.log("Error is Wallet paying is ");
                                         console.log(err);
                                         res.json(response);
-                                    }
-                                    else {
+                                    } else {
                                         console.log("Result in paying to Hot Wallet Address from Customer is");
                                         console.log(result);
                                         var krakenApi = require("kraken-api");
-                                        var krakenKey = ethereumUser.krakenAPIKey;
-                                        var krakenSecret = ethereumUser.krakenAPISecret;
+                                        var krakenKey = BtcUser.krakenAPIKey;
+                                        var krakenSecret = BtcUser.krakenAPISecret;
                                         const KrakenClient = require('kraken-api');
                                         const kraken = new KrakenClient(krakenKey, krakenSecret);
                                         var transaction = new Transaction();
-                                        transaction.merchantId = ethereumUser._id;
+                                        transaction.merchantId = BtcUser._id;
                                         transaction.customerAddress = customerAddress;
                                         transaction.sendingAmount = amount;
                                         transaction.transactionType = "BUY";
@@ -524,12 +566,12 @@ receiveBalance.post(function (req, res) {
                                         response.message = "Success";
                                         res.json(response);
                                         // For Profit Setup
-                                        console.log("Mechant Profit before Add up is " + ethereumUser.merchantProfit);
+                                        console.log("Mechant Profit before Add up is " + BtcUser.merchantProfit);
                                         console.log("Merchant Profit from request is " + req.body.merchantProfit);
-                                        ethereumUser.merchantProfit += req.body.merchantProfit;
+                                        BtcUser.merchantProfit += req.body.merchantProfit;
                                         // Profit ENTRY
                                         var profit = new Profit();
-                                        profit.merchantId = ethereumUser._id;
+                                        profit.merchantId = BtcUser._id;
                                         profit.customerAddress = customerAddress;
                                         profit.profitTotal = req.body.merchantProfit;
                                         profit.transactionId = result;
@@ -537,50 +579,47 @@ receiveBalance.post(function (req, res) {
                                         profit.profitType = "BUY";
                                         profit.save();
                                         // 
-                                        console.log("Mechant Profit after Add up is " + ethereumUser.merchantProfit);
-                                        if (ethereumUser.merchantProfit > ethereumUser.merchantProfitThreshold) {
+                                        console.log("Mechant Profit after Add up is " + BtcUser.merchantProfit);
+                                        if (BtcUser.merchantProfit > BtcUser.merchantProfitThreshold) {
                                             AdminConfigurations.findOne({}, function (err, adminConfiguration) {
-                                                var merchantProfitToSend = ((ethereumUser.merchantProfit * adminConfiguration.merchantProfit) / 100);
+                                                var merchantProfitToSend = ((BtcUser.merchantProfit * adminConfiguration.merchantProfit) / 100);
                                                 console.log("Profit to send to Merchant is " + merchantProfitToSend);
-                                                var btmProfitToSend = ((ethereumUser.merchantProfit * adminConfiguration.bitpointProfit) / 100);
+                                                var btmProfitToSend = ((BtcUser.merchantProfit * adminConfiguration.bitpointProfit) / 100);
                                                 console.log("Profit to send to BTM WALLET is " + btmProfitToSend);
-                                                var newMerchantProfit = ethereumUser.merchantProfit;
-                                                kraken.api('Withdraw', { asset: 'XXBT', key: ethereumUser.profitWalletKrakenBenificiaryKey, amount: merchantProfitToSend }, function (err, data) {
+                                                var newMerchantProfit = BtcUser.merchantProfit;
+                                                kraken.api('Withdraw', { asset: 'XXBT', key: BtcUser.profitWalletKrakenBenificiaryKey, amount: merchantProfitToSend }, function (err, data) {
                                                     if (err) {
                                                         response.data = err.message;
-                                                        response.message = "Kraken "+err.message;
+                                                        response.message = "Kraken " + err.message;
                                                         response.code = 770;
                                                         console.log(response);
-                                                    }
-                                                    else {
+                                                    } else {
                                                         response.data = data;
                                                         response.message = "Sent to Profit Wallet from Kraken";
                                                         response.code = 200;
                                                         console.log(response);
                                                     }
                                                 });
-                                                kraken.api('Withdraw', { asset: 'XXBT', key: ethereumUser.bitpointProfitWalletKrakenBenificiaryKey, amount: btmProfitToSend }, function (err, data) {
+                                                kraken.api('Withdraw', { asset: 'XXBT', key: BtcUser.bitpointProfitWalletKrakenBenificiaryKey, amount: btmProfitToSend }, function (err, data) {
                                                     if (err) {
                                                         response.data = err.message;
                                                         response.message = "Error in Sending Profit to BTM Profit Wallet";
                                                         response.code = 770;
                                                         console.log(response);
-                                                    }
-                                                    else {
+                                                    } else {
                                                         response.data = data;
                                                         response.message = "Sent in BTM Profit Wallet from Kraken";
                                                         response.code = 200;
                                                         console.log(response);
                                                     }
                                                 });
-                                                ethereumUser.merchantProfit = 0;
-                                                ethereumUser.save(function (err, ethereumUser) {
+                                                BtcUser.merchantProfit = 0;
+                                                BtcUser.save(function (err, BtcUser) {
 
                                                 });
                                             });
-                                        }
-                                        else {
-                                            ethereumUser.save(function (err, ethereumUser) {
+                                        } else {
+                                            BtcUser.save(function (err, BtcUser) {
 
                                             });
                                         }
@@ -598,7 +637,7 @@ receiveBalance.post(function (req, res) {
 
 function insertData(data, address) {
     // send 8% to 
-    EthereumUser.findOne({ userEthereumId: address }, function (err, merchant) {
+    BtcUser.findOne({ userBtcId: address }, function (err, merchant) {
         client.initWallet(merchant.userName, merchant.userPassword, function (err, wallet) {
             // send 8% to ATM owner profit wallet
             // send 2% to bitpoint profit wallet
@@ -625,8 +664,7 @@ withdrawFromHotWalletRoute.post(function (req, res) {
         if (error) {
             console.log(error);
             res.json(error.message);
-        }
-        else {
+        } else {
             console.log(data.result);
             res.json(data);
         }
@@ -652,8 +690,7 @@ updateMinMaxBalanceRoute.post(function (req, res) {
             response.code = 500;
             console.log(response);
             res.json(response);
-        }
-        else {
+        } else {
             merchant.minimumHotWalletBalance = req.body.minimumHotWalletBalance;
             merchant.maximumHotWalletBalance = req.body.maximumHotWalletBalance;
             merchant.save(function (err, merchant) {
@@ -675,9 +712,8 @@ updateUserPinRoute.post(function (req, res) {
             response.code = 500;
             console.log(response);
             res.json(response);
-        }
-        else {
-            merchant.ethereumUserPasscode = req.body.UserPasscode;
+        } else {
+            merchant.BtcUserPasscode = req.body.UserPasscode;
             merchant.save(function (err, merchant) {
                 response.data = merchant;
                 response.message = "Success";
@@ -697,8 +733,7 @@ updateHotWalletBenificiaryKeyRoute.post(function (req, res) {
             response.code = 500;
             console.log(response);
             res.json(response);
-        }
-        else {
+        } else {
             merchant.hotWalletBenificiaryKey = req.body.hotWalletBenificiaryKey;
             merchant.save(function (err, merchant) {
                 response.data = merchant;
@@ -719,8 +754,7 @@ updateUserKrakenSetupRoute.post(function (req, res) {
             response.code = 500;
             console.log(response);
             res.json(response);
-        }
-        else {
+        } else {
             merchant.krakenAPIKey = req.body.krakenAPIKey;
             merchant.krakenAPISecret = req.body.krakenAPISecret;
             if (req.body.isToggleChange == 1) {
@@ -745,8 +779,7 @@ updateUserProfitThresholdSetupRoute.post(function (req, res) {
             response.code = 500;
             console.log(response);
             res.json(response);
-        }
-        else {
+        } else {
             merchant.merchantProfitThreshold = req.body.merchantProfitThreshold;
             merchant.save(function (err, merchant) {
                 response.data = merchant;
@@ -767,8 +800,7 @@ createMerchantProfitWalletRoute.post(function (req, res) {
             response.code = 500;
             console.log(response);
             res.json(response);
-        }
-        else {
+        } else {
             if (req.body.createNewProfitWallet == 1) {
                 client.createNewWallet(req.body.profitWalletUserName, req.body.profitWalletUserPassword, function (err, wallet, backupInfo) {
                     if (err) {
@@ -778,8 +810,7 @@ createMerchantProfitWalletRoute.post(function (req, res) {
                         response.message = err.message;
                         console.log(response);
                         res.json(response);
-                    }
-                    else {
+                    } else {
                         client.initWallet(req.body.profitWalletUserName, req.body.profitWalletUserPassword, function (err, wallet) {
                             if (err) {
                                 console.log(err.message);
@@ -788,8 +819,7 @@ createMerchantProfitWalletRoute.post(function (req, res) {
                                 response.message = err.message;
                                 console.log(response);
                                 res.json(response);
-                            }
-                            else {
+                            } else {
                                 wallet.getNewAddress(function (err, address) {
                                     //global.addressArray.push(address);
                                     merchant.profitWalletAddress = address;
@@ -805,12 +835,12 @@ createMerchantProfitWalletRoute.post(function (req, res) {
                         });
                     }
                 });
-            }
-            else {
+            } else {
                 if (req.body.profitWalletAddress != "") {
                     merchant.profitWalletAddress = req.body.profitWalletAddress;
                 }
-                if (merchant.useKraken == true) {
+                //if (merchant.useKraken == true) {
+                if (req.body.profitWalletKrakenBenificiaryKey != null && req.body.profitWalletKrakenBenificiaryKey != undefined && req.body.profitWalletKrakenBenificiaryKey.length > 0) {
                     var krakenKey = merchant.krakenAPIKey;
                     var krakenSecret = merchant.krakenAPISecret;
                     const KrakenClient = require('kraken-api');
@@ -818,7 +848,7 @@ createMerchantProfitWalletRoute.post(function (req, res) {
                     kraken.api('Withdraw', { asset: 'XXBT', key: req.body.profitWalletKrakenBenificiaryKey, amount: 0.00500 }, function (error, data) {
                         if (error) {
                             response.code = 407;
-                            response.message = "Kraken "+error.message;
+                            response.message = "Kraken " + error.message;
                             response.data = error;
                             res.json(response);
                             console.log(response);
@@ -826,16 +856,14 @@ createMerchantProfitWalletRoute.post(function (req, res) {
                             console.log(error);
                             console.log("Code is " + error.Code);
                             console.log("Message is " + error.message);
-                        }
-                        else {
+                        } else {
                             console.log("Data is");
                             console.log(data);
                             console.log("Data.Result is");
                             console.log(data.result);
                             merchant.profitWalletKrakenBenificiaryKey = req.body.profitWalletKrakenBenificiaryKey;
-                            if(merchant.profitWalletKrakenBenificiaryKey==undefined)
-                            {
-                                merchant.profitWalletKrakenBenificiaryKey=="";
+                            if (merchant.profitWalletKrakenBenificiaryKey == undefined) {
+                                merchant.profitWalletKrakenBenificiaryKey == "";
                             }
                             console.log("Benificiary Key is " + merchant.profitWalletKrakenBenificiaryKey);
                             merchant.save(function (err, merchant) {
@@ -847,14 +875,12 @@ createMerchantProfitWalletRoute.post(function (req, res) {
                             });
                         }
                     });
-                }
-                else {
+                } else {
                     console.log("Kraken is setup t0 false");
                     merchant.profitWalletAddress = req.body.profitWalletAddress;
                     merchant.profitWalletKrakenBenificiaryKey = req.body.profitWalletKrakenBenificiaryKey;
-                    if(merchant.profitWalletKrakenBenificiaryKey==undefined)
-                    {
-                        merchant.profitWalletKrakenBenificiaryKey=="";
+                    if (merchant.profitWalletKrakenBenificiaryKey == undefined) {
+                        merchant.profitWalletKrakenBenificiaryKey == "";
                     }
                     var valid = WAValidator.validate(req.body.profitWalletAddress, 'BTC');
                     if (valid) {
@@ -866,8 +892,7 @@ createMerchantProfitWalletRoute.post(function (req, res) {
                             res.json(response);
                             console.log(response);
                         });
-                    }
-                    else {
+                    } else {
                         response.code = 203;
                         response.message = "INVALID ADDRESS";
                         response.data = null;
@@ -888,20 +913,19 @@ createBitPointProfitWalletRoute.post(function (req, res) {
             response.code = 500;
             console.log(response);
             res.json(response);
-        }
-        else {
+        } else {
             if (req.body.bitpointProfitWalletAddress != "") {
                 merchant.bitpointProfitWalletAddress = req.body.bitpointProfitWalletAddress;
             }
-            if (req.body.bitpointProfitWalletKrakenBenificiaryKey!=null && req.body.bitpointProfitWalletKrakenBenificiaryKey!=undefined && req.body.bitpointProfitWalletKrakenBenificiaryKey.length>0 ) {
+            if (req.body.bitpointProfitWalletKrakenBenificiaryKey != null && req.body.bitpointProfitWalletKrakenBenificiaryKey != undefined && req.body.bitpointProfitWalletKrakenBenificiaryKey.length > 0) {
                 var krakenKey = merchant.krakenAPIKey;
                 var krakenSecret = merchant.krakenAPISecret;
                 const KrakenClient = require('kraken-api');
                 const kraken = new KrakenClient(krakenKey, krakenSecret);
-                kraken.api('Withdraw', { asset: 'XXBT', key: req.body.bitpointProfitWalletKrakenBenificiaryKey, amount: 0.1 }, function (error, data) {
+                kraken.api('Withdraw', { asset: 'XXBT', key: req.body.bitpointProfitWalletKrakenBenificiaryKey, amount: 0.005 }, function (error, data) {
                     if (error) {
                         response.code = 407;
-                        response.message = "Kraken "+error.message;
+                        response.message = "Kraken " + error.message;
                         response.data = null;
                         res.json(response);
                         console.log(response);
@@ -909,8 +933,7 @@ createBitPointProfitWalletRoute.post(function (req, res) {
                         console.log("Error is ");
                         console.log(error);
                         console.log("Message is " + error.message);
-                    }
-                    else {
+                    } else {
                         console.log("Data is");
                         console.log(data);
                         console.log("Data.Result is");
@@ -919,8 +942,7 @@ createBitPointProfitWalletRoute.post(function (req, res) {
                         merchant.save(function (err, merchant) {
                             if (err) {
 
-                            }
-                            else {
+                            } else {
                                 response.code = 200;
                                 response.message = "Success";
                                 response.data = merchant;
@@ -930,8 +952,7 @@ createBitPointProfitWalletRoute.post(function (req, res) {
                         })
                     }
                 });
-            }
-            else {
+            } else {
                 merchant.bitpointProfitWalletAddress = req.body.bitpointProfitWalletAddress;
                 var valid = WAValidator.validate(req.body.bitpointProfitWalletAddress, 'BTC');
                 if (valid) {
@@ -939,8 +960,7 @@ createBitPointProfitWalletRoute.post(function (req, res) {
                     merchant.save(function (err, merchant) {
                         if (err) {
 
-                        }
-                        else {
+                        } else {
                             response.code = 200;
                             response.message = "Success";
                             response.data = merchant;
@@ -948,8 +968,7 @@ createBitPointProfitWalletRoute.post(function (req, res) {
                             console.log(response);
                         }
                     })
-                }
-                else {
+                } else {
                     console.log('Address INVALID');
                     response.code = 203;
                     response.message = "INVALID ADDRESS";
@@ -970,15 +989,13 @@ verifyMerchantPinRoute.post(function (req, res) {
             response.code = 500;
             console.log(response);
             res.json(response);
-        }
-        else {
-            if (merchant.ethereumUserPasscode == req.body.UserPasscode) {
+        } else {
+            if (merchant.BtcUserPasscode == req.body.UserPasscode) {
                 response.message = "Success";
                 response.code = 200;
                 response.data = merchant;
                 res.json(response);
-            }
-            else {
+            } else {
                 response.message = "Invalid Pin";
                 response.code = 205;
                 response.data = null;
@@ -996,8 +1013,7 @@ updateMerchantProfitRoute.post(function (req, res) {
             response.code = 500;
             console.log(response);
             res.json(response);
-        }
-        else {
+        } else {
             merchant.merchantProfitMargin = req.body.merchantProfitMargin;
             merchant.save(function (err, merchant) {
                 response.data = merchant;
@@ -1020,8 +1036,7 @@ getTransactionDataRoute.post(function (req, res) {
             response.message = "Error in Getting Transaction";
             res.json(response);
             console.log("Error is " + err);
-        }
-        else {
+        } else {
             response.data = trx;
             response.code = 200;
             response.message = "Success";
@@ -1032,15 +1047,21 @@ getTransactionDataRoute.post(function (req, res) {
 });
 
 getTransactionsByMerchantIdRoute.post(function (req, res) {
-    Transaction.find({ merchantId: req.body.merchantId }, function (err, transactions) {
+    var query = {};
+    if (req.body.merchantId == -1) {
+
+    }
+    else {
+        query["merchantId"] = req.body.merchantId;
+    }
+    Transaction.find(query, function (err, transactions) {
         if (err) {
             response.data = err;
             response.code = 299;
             response.message = "Error in Getting Transactions";
             res.json(response);
             console.log("Error is " + err);
-        }
-        else {
+        } else {
             response.data = transactions;
             response.code = 200;
             response.message = "Success";
@@ -1056,14 +1077,11 @@ getTransactionStatisticsByTimeRoute.post(function (req, res) {
     console.log("Starting Time is " + startingTime);
     if (req.body.filterTime == 1) {
         endingTime = Math.floor(new Date()) - 86400000;
-    }
-    else if (req.body.filterTime == 2) {
+    } else if (req.body.filterTime == 2) {
         endingTime = Math.floor(new Date()) - (7 * 86400000);
-    }
-    else if (req.body.filterTime == 3) {
+    } else if (req.body.filterTime == 3) {
         endingTime = Math.floor(new Date()) - (30 * 86400000);
-    }
-    else if (req.body.filterTime == 4) {
+    } else if (req.body.filterTime == 4) {
         endingTime = Math.floor(new Date()) - (90 * 86400000);
     }
     console.log("Ending time is " + endingTime);
@@ -1079,18 +1097,18 @@ getTransactionStatisticsByTimeRoute.post(function (req, res) {
             response.message = "Error in Getting Transactions";
             //res.json(response);
             console.log("Error is " + err);
-        }
-        else {
+        } else {
             var sendingVolume = 0;
             var receivingVolume = 0;
             var totalVolume = 0;
             transactions.forEach(function (element) {
-                totalVolume += element.sendingAmount;
-                if (element.transactionType == "SELL") {
-                    sendingVolume += element.sendingAmount;
-                }
-                else {
-                    receivingVolume += element.sendingAmount;
+                if (element.sendingAmount != undefined && element.sendingAmount != null) {
+                    totalVolume += element.sendingAmount;
+                    if (element.transactionType == "SELL") {
+                        sendingVolume += element.sendingAmount;
+                    } else {
+                        receivingVolume += element.sendingAmount;
+                    }
                 }
             }, this);
             var obj = new Object();
@@ -1113,14 +1131,11 @@ getProfitStatisticsByTimeRoute.post(function (req, res) {
     console.log("Starting Time is " + startingTime);
     if (req.body.filterTime == 1) {
         endingTime = Math.floor(new Date()) - 86400000;
-    }
-    else if (req.body.filterTime == 2) {
+    } else if (req.body.filterTime == 2) {
         endingTime = Math.floor(new Date()) - (7 * 86400000);
-    }
-    else if (req.body.filterTime == 3) {
+    } else if (req.body.filterTime == 3) {
         endingTime = Math.floor(new Date()) - (30 * 86400000);
-    }
-    else if (req.body.filterTime == 4) {
+    } else if (req.body.filterTime == 4) {
         endingTime = Math.floor(new Date()) - (90 * 86400000);
     }
     console.log("Ending time is " + endingTime);
@@ -1136,18 +1151,18 @@ getProfitStatisticsByTimeRoute.post(function (req, res) {
             response.message = "Error in Getting Transactions";
             //res.json(response);
             console.log("Error is " + err);
-        }
-        else {
+        } else {
             var sendingProfit = 0;
             var receivingProfit = 0;
             var totalProfit = 0;
             profits.forEach(function (element) {
-                totalProfit += element.profitTotal;
-                if (element.profitType == "SELL") {
-                    sendingProfit += element.profitTotal;
-                }
-                else {
-                    receivingProfit += element.profitTotal;
+                if (element.profitTotal != null && element.profitTotal != undefined) {
+                    totalProfit += element.profitTotal;
+                    if (element.profitType == "SELL") {
+                        sendingProfit += element.profitTotal;
+                    } else {
+                        receivingProfit += element.profitTotal;
+                    }
                 }
             }, this);
             var obj = new Object();
@@ -1174,14 +1189,11 @@ attachListenerRoute.post(function (req, res) {
     res.json(response);
 });
 
-//var apiurl = "https://insight.bitpay.com/";
-var apiurl = "https://blockexplorer.com/";
+var apiurl = "https://insight.bitpay.com/";
+//var apiurl = "https://blockexplorer.com/";
 var socket = require('socket.io-client')(apiurl);
 
 var transactionArray = [];
-
-
-global.btc_address = 'mnZswjQ4qqoNZRsQ5GWZnDPvEPm8uDpArz';
 
 socket.on('connect', function () {
     // Join the room.
@@ -1191,7 +1203,7 @@ socket.on('block', function (data) {
     console.log("Block");
     console.log(data);
     if (transactionArray.length != 0) {
-        processBlockOfBitcoin(transactionArray);
+
     }
 });
 var userArray = [];
@@ -1210,74 +1222,40 @@ socket.on('tx', function (data) {
         var obj = data.vout[i];
         for (property in obj) {
             //console.log("Property is "+property);
-            var checkUser = userArray.find(x => x.userEthereumId == property);
+            var checkUser = userArray.find(x => x.userBtcId == property);
             if (checkUser !== undefined) {
-                if (property == '34Cdzfg8pEaadbTf1MTnHqi9ughZ5fVkrV') {
-                    console.log("Element User EthereumId is " + checkUser.userEthereumId);
-                    console.log("From transaction , address is " + property);
-                }
-                if (checkUser.userEthereumId == property) {
+                if (checkUser.userBtcId == property) {
                     console.log(property);
                     console.log("*****************************************Transaction is pushed******************************");
+                    console.log("Transaction Id is " + data.txid);
                     transactionArray.push(data);
+                    var transaction = new Transaction();
+                    transaction.merchantId = checkUser.userBtcId;
+                    transaction.transactionType = "SELL";
+                    transaction.transactionStatus = "PENDING";
+                    transaction.transactionId = data.txid;
+                    transaction.transactionTime = Math.floor(new Date());
+                    transaction.save();
+                    ReceiverBalance.findOne({ receiverAddress: checkUser.userBtcId }, function (err, receiver) {
+                        utility.sendTransactionUnConfirmedNotificationMessage(receiver.receiverFCMId, data.txid, data.valueOut);
+                    });
                 }
             }
         }
     }
 });
 
-function processBlockOfBitcoin(transactionArray) {
-    asyncLoop(transactionArray, function (item, next) {
-        try {
-            console.log("Item Transaction Id is " + item.txid);
-            processBlockExplorerData(item.txid);
-            /*webClient.get("https://blockexplorer.com/api/tx/" + item.txid, function (data, resp) {
-                console.log("Item is ");
-                console.log(item);
-                console.log("Data from blockxplorer transaction is ");
-                console.log(data);
-                for (var j = 0; j < data.vout.length; j++) {
-                    var checkUser = userArray.find(x => x.userEthereumId == data.vout[j].addr);
-                    if (checkUser !== undefined) {
-                        console.log("Vout us matched " + data.vout[j].addr);
-                        ReceiverBalance.find({}, function (err, receiverBalances) {
-                            receiverBalances.forEach(function (elementReceiverBalance) {
-                                for (var i = 0; i < data.vin[i].length; i++) {
-                                    if (elementReceiverBalance.senderAddress == data.vin[i].addr) {
-                                        console.log("Vin is matched " + data.vin[i].addr);
-                                        ReceiverBalance.findOne({ receiverAddress: element.userEthereumId }, function (err, receiverBalance) {
-                                            console.log("Sending message , fcmID " + receiverBalance.receiverFCMId);
-                                            utility.sendTransactionReceivedNotificationMessage(receiverBalance.receiverFCMId, elementReceiverBalance.senderAddress);
-                                        });
-                                    }
-                                }
-                            }, this);
-                        });
-                    }
-                }
-            });*/
-            next();
-        }
-        catch (ex) {
-            console.log(ex);
-            next();
-        }
-    });
-}
 
 postSaveSenderAddressRoute.post(function (req, res) {
     console.log("postSaveSenderAddressRoute is Called");
-    var senderAddress = req.body.senderAddress;
     var receiverAddress = req.body.receiverAddress;
     var receiverBalance = new ReceiverBalance();
-    console.log("Sender Address is " + senderAddress);
     console.log("Receiver Address is " + receiverAddress);
     console.log("FCM ID is " + req.body.fcmId);
-    receiverBalance.senderAddress = senderAddress;
     receiverBalance.receiverAddress = receiverAddress;
     receiverBalance.receiverFCMId = req.body.fcmId;
     receiverBalance.save(function (err, receiverBalance) {
-        response.message = "Success";
+        response.message = `Listening for incoming transactions`;
         response.code = 200;
         response.data = receiverBalance;
         console.log("receive Balance Object is ");
@@ -1300,39 +1278,8 @@ postUpdateLatLongRoute.post(function (req, res) {
     });
 });
 
-function processBlockExplorerData(transactionId) {
-    console.log("processBlockExplorerData is called");
-    webClient.get("https://blockexplorer.com/api/tx/" + transactionId, function (data, resp) {
-        console.log("Data from blockxplorer transaction is ");
-        console.log(data);
-        for (var j = 0; j < data.vout.length; j++) {
-            console.log("data.vout.lenghth is " + data.vout.length);
-            var voutAddressesFromTransaction = data.vout[j].scriptPubKey.addresses;
-            console.log(voutAddressesFromTransaction);
-            for (var addressCount = 0; addressCount < voutAddressesFromTransaction.length; addressCount = addressCount + 1) {
-                var checkUser = userArray.find(x => x.userEthereumId == voutAddressesFromTransaction[addressCount]);
-                if (checkUser !== undefined) {
-                    console.log("Check user is defined");
-                    console.log("Vin length is " + data.vin.length);
-                    for (var i = 0; i < data.vin.length; i++) {
-                        console.log("Data.vin is " + data.vin[i].addr);
-                        var receivedUser = receiverUserArray.find(x => x.senderAddress == data.vin[i].addr);
-                        if (receivedUser != undefined) {
-                            console.log("Vin is matched " + data.vin[i].addr);
-                            console.log("Sending message , fcmID " + receivedUser.receiverFCMId);
-                            utility.sendTransactionReceivedNotificationMessage(receivedUser.receiverFCMId, receivedUser.senderAddress, data.vout[j].value);
-                        }
-                    }
-                }
-                console.log("Value of AddressCount is " + addressCount);
-            }
-        }
-    });
-}
 
-getTestTransactionDataRoute.get(function (req, res) {
-    processBlockExplorerData(req.query.transactionId);
-});
+
 
 postUpdateUseKrakenRoute.post(function (req, res) {
     User.findOne({ _id: req.body.merchantId }, function (err, merchant) {
@@ -1342,55 +1289,49 @@ postUpdateUseKrakenRoute.post(function (req, res) {
         if (useKraken == true) {
             console.log("Kraken APi is " + merchant.krakenAPIKey);
             console.log("Kraken APi Secret  is " + merchant.krakenAPISecret);
-            if (merchant.krakenAPIKey == null || merchant.krakenAPISecret == null || merchant.krakenAPISecret == "" || merchant.krakenAPIKey == "" || merchant.krakenAPIKey == undefined || merchant.krakenAPISecret ==undefined) {
+            if (merchant.krakenAPIKey == null || merchant.krakenAPISecret == null || merchant.krakenAPISecret == "" || merchant.krakenAPIKey == "" || merchant.krakenAPIKey == undefined || merchant.krakenAPISecret == undefined) {
                 console.log("Kraken Keys are empty");
                 response.data = null;
                 response.code = 297;
                 response.message = "Please set Kraken First";
                 res.json(response);
                 console.log("Error is " + err);
-            }
-            else if (merchant.hotWalletBenificiaryKey == null || merchant.hotWalletBenificiaryKey == "" || merchant.hotWalletBenificiaryKey == "null" || merchant.hotWalletBenificiaryKey==undefined) {
+            } else if (merchant.hotWalletBenificiaryKey == null || merchant.hotWalletBenificiaryKey == "" || merchant.hotWalletBenificiaryKey == "null" || merchant.hotWalletBenificiaryKey == undefined) {
                 console.log("Hot Wallet Benificiary Key is Empty");
                 response.data = null;
                 response.code = 296;
                 response.message = "Hot Wallet Benificiary Key is not set";
                 res.json(response);
                 console.log("Error is " + err);
-            }
-            else if (merchant.profitWalletAddress == null || merchant.profitWalletAddress == "" || merchant.profitWalletAddress == "null" || merchant.profitWalletAddress==undefined) {
+            } else if (merchant.profitWalletAddress == null || merchant.profitWalletAddress == "" || merchant.profitWalletAddress == "null" || merchant.profitWalletAddress == undefined) {
                 console.log("Profit Wallet Address is Empty");
                 response.data = null;
                 response.code = 296;
                 response.message = "Profit Wallet Address is Empty";
                 res.json(response);
                 console.log("Error is " + err);
-            }
-            else if (merchant.profitWalletKrakenBenificiaryKey == null || merchant.profitWalletKrakenBenificiaryKey == "" || merchant.profitWalletKrakenBenificiaryKey == "null" || merchant.profitWalletKrakenBenificiaryKey==undefined) {
+            } else if (merchant.profitWalletKrakenBenificiaryKey == null || merchant.profitWalletKrakenBenificiaryKey == "" || merchant.profitWalletKrakenBenificiaryKey == "null" || merchant.profitWalletKrakenBenificiaryKey == undefined) {
                 console.log("Profit Wallet Benificiary is Empty");
                 response.data = null;
                 response.code = 296;
                 response.message = "Profit Wallet Benificiary is not set";
                 res.json(response);
                 console.log("Error is " + err);
-            }
-            else if (merchant.bitpointProfitWalletAddress == null || merchant.bitpointProfitWalletAddress == "" || merchant.bitpointProfitWalletAddress == "null" || merchant.bitpointProfitWalletAddress==undefined) {
+            } else if (merchant.bitpointProfitWalletAddress == null || merchant.bitpointProfitWalletAddress == "" || merchant.bitpointProfitWalletAddress == "null" || merchant.bitpointProfitWalletAddress == undefined) {
                 console.log("Bitpoint Wallet Address is Empty");
                 response.data = null;
                 response.code = 296;
                 response.message = "Bitpoint Wallet Address is not set";
                 res.json(response);
                 console.log("Error is " + err);
-            }
-            else if (merchant.bitpointProfitWalletKrakenBenificiaryKey == null || merchant.bitpointProfitWalletKrakenBenificiaryKey == "" || merchant.bitpointProfitWalletKrakenBenificiaryKey == "null" || merchant.bitpointProfitWalletKrakenBenificiaryKey==undefined) {
+            } else if (merchant.bitpointProfitWalletKrakenBenificiaryKey == null || merchant.bitpointProfitWalletKrakenBenificiaryKey == "" || merchant.bitpointProfitWalletKrakenBenificiaryKey == "null" || merchant.bitpointProfitWalletKrakenBenificiaryKey == undefined) {
                 console.log("Bitpoint Profit Wallet Benificiary is not set");
                 response.data = null;
                 response.code = 296;
                 response.message = "Bitpoint Profit Wallet Benificiary is not set";
                 res.json(response);
                 console.log("Error is " + err);
-            }
-            else {
+            } else {
                 merchant.save(function (err, merchant) {
                     if (err) {
                         response.data = err;
@@ -1398,8 +1339,7 @@ postUpdateUseKrakenRoute.post(function (req, res) {
                         response.message = "Error setting Kraken use";
                         res.json(response);
                         console.log("Error is " + err);
-                    }
-                    else {
+                    } else {
                         response.message = "Success";
                         response.code = 200;
                         response.data = merchant;
@@ -1407,8 +1347,7 @@ postUpdateUseKrakenRoute.post(function (req, res) {
                     }
                 });
             }
-        }
-        else {
+        } else {
             console.log("ELSE ----------");
             merchant.save(function (err, merchant) {
                 if (err) {
@@ -1417,8 +1356,7 @@ postUpdateUseKrakenRoute.post(function (req, res) {
                     response.message = "Error setting Kraken use";
                     res.json(response);
                     console.log("Error is " + err);
-                }
-                else {
+                } else {
                     response.message = "Success";
                     response.code = 200;
                     response.data = merchant;
@@ -1430,8 +1368,61 @@ postUpdateUseKrakenRoute.post(function (req, res) {
 });
 
 sendEmailRoute.get(function (req, res) {
-    utility.sendEmail("tauqeerulhassan45@gmail.com", "subject", "message");
+    utility.sendTransactionUnConfirmedNotificationMessage('d4rxQxP5bWM:APA91bGC3IIqldNujJDTCcZJ0IX3oYDm9bchTPgenkj7YmoE8CFRn8N1brxys7vgONtkhGMCsIjbCukTPaxz3_qwpT4CjbVV4fOv0KBvMRcR9BOSvnjpalCmVePiOJ4NLDqjRGZEK2vn', 'c89cfb4c5a2bd79378293298fa1466960dbd0dab8d13e6e6331dd923837fb86b', '1.24974378');
+    //utility.sendTransactionReceivedNotificationMessage('d4rxQxP5bWM:APA91bGC3IIqldNujJDTCcZJ0IX3oYDm9bchTPgenkj7YmoE8CFRn8N1brxys7vgONtkhGMCsIjbCukTPaxz3_qwpT4CjbVV4fOv0KBvMRcR9BOSvnjpalCmVePiOJ4NLDqjRGZEK2vn', '1234.987','c89cfb4c5a2bd79378293298fa1466960dbd0dab8d13e6e6331dd923837fb86b');
     res.json("sdf");
+});
+
+cron.schedule('*/10 * * * *', function () {
+    console.log("Inside Cron");
+    Transaction.find({ transactionStatus: "PENDING" }, function (err, transactions) {
+        console.log(transactions);
+        for (var i = 0; i < transactions.length; i++) {
+            webClient.get("https://blockexplorer.com/api/tx/" + transactions[i].transactionId, function (data, resp) {
+                console.log("Data Confirmations " + data.confirmations);
+                if (data.confirmations > 0) {
+                    console.log("Data from blockxplorer transaction is ");
+                    console.log(data);
+                    for (var j = 0; j < data.vout.length; j++) {
+                        console.log("data.vout.lenghth is " + data.vout.length);
+                        var voutAddressesFromTransaction = data.vout[j].scriptPubKey.addresses;
+                        console.log(voutAddressesFromTransaction);
+                        var outAddrIndex = 0;
+                        for (var addressCount = 0; addressCount < voutAddressesFromTransaction.length; addressCount = addressCount + 1) {
+                            var checkUser = userArray.find(x => x.userBtcId == voutAddressesFromTransaction[addressCount]);
+                            if (checkUser !== undefined) {
+
+                                console.log("Check user is defined");
+                                console.log("Vin length is " + data.vin.length);
+                                console.log(checkUser);
+                                var receivedUser = receiverUserArray.find(x => x.receiverAddress == checkUser.userBtcId);
+                                console.log("Sending message , fcmID " + receivedUser.receiverFCMId);
+                                utility.sendTransactionReceivedNotificationMessage(receivedUser.receiverFCMId, data.vout[j].value, data.txid);
+                                Transaction.findOne({ transactionId: data.txid }, function (err, transaction) {
+                                    transaction.transactionStatus = "CONFIRMED";
+                                    transaction.save();
+
+                                });
+
+                            }
+                            outAddrIndex += 1;
+                            console.log("Value of AddressCount is " + addressCount);
+                        }
+                    }
+                }
+            });
+        }
+    });
+});
+
+sendUnConfirmedTransactionNofyification.post(function (req, res) {
+    var fcmId = req.body.fcmId;
+    utility.sendTransactionUnConfirmedNotificationMessage(fcmId, "data.txid", "345.677");
+});
+
+sendConfirmedTransactionNofyification.post(function (req, res) {
+    var fcmId = req.body.fcmId;
+    utility.sendTransactionReceivedNotificationMessage(fcmId, '1234.987', 'c89cfb4c5a2bd79378293298fa1466960dbd0dab8d13e6e6331dd923837fb86b');
 });
 
 module.exports = router;
