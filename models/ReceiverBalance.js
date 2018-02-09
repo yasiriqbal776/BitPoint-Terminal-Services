@@ -7,7 +7,6 @@ var mongoose = require('mongoose');
 
 // Define our beer schema
 var ReceiverBalanceSchema = new mongoose.Schema({
-    senderAddress:String,
     receiverAddress:String,
     receiverFCMId:String
 });
