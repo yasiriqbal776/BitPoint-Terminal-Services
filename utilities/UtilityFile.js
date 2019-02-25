@@ -30,7 +30,7 @@ UtilityFile.prototype.getURL = function () {
     // Connection URL. This is where your mongodb server is running.
     //var url = 'mongodb://localhost:27017/HRMS';
     //var url = 'mongodb://bitpointadmin:bitpoint123@ds161950.mlab.com:61950/bitpointdb';
-    var url = 'mongodb://bpterminal:bpterminal@ds125578.mlab.com';
+    var url = 'mongodb://bpterminal:bpterminal@ds125578.mlab.com:25578/bpterminal';
     return url;
 };
 
