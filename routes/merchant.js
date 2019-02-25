@@ -53,7 +53,6 @@ var client = blocktrail.BlocktrailSDK({
     network: "BTC",
     testnet: false
 });
-
 // web client
 var webClient = new Client();
 //SOCKET
@@ -154,26 +153,27 @@ adminLoginRoute.post(function (req, res) {
                 var validate = password.validateHash(user.userPassword, req.body.userPassword);
                 if (validate == true) {
                     response.message = "Success";
-                    response.code = 200;
-                    client.address(user.userBtcId, function (err, address) {
-                        if (err) {
-                            response.data = null;
-                            response.message = "Error in Getting Address";
-                            response.code = 505;
-                            res.json(err);
-                        } else {
-                            console.log("Customer address is ");
-                            console.log(address);
-                            console.log("Customer Balance is " + address.balance);
-                            user.hotWalletBalance = parseFloat(address.balance) / 100000000;
-                            user.save(function (err, user) {
-                                response.data = user;
-                                console.log("User is");
-                                console.log(user);
-                                res.json(response);
-                            });
-                        }
-                    });
+					response.code = 200;
+					client.address(user.userBtcId, function (err, address) {
+						let balance = 0;
+						if (err) {
+							console.log(err)
+						
+						} else {
+							console.log("Customer address is ");
+							console.log(address);
+							console.log("Customer Balance is " + address.balance);
+							balance =  parseFloat(address.balance) / 100000000;
+						}
+						user.hotWalletBalance = balance;
+						user.save(function (err, user) {
+							response.data = user;
+							console.log("User is");
+							console.log(user);
+							res.json(response);
+						});
+					});
+                   
                 } else {
                     response.message = "Invalid User Name or Password";
                     response.code = serverMessage.returnPasswordMissMatch();
@@ -205,8 +205,13 @@ createMerchantRoute.post(function (req, res) {
     BtcUser.merchantProfit = 0;
     BtcUser.merchantProfitMargin = 10;
     BtcUser.useKraken = false;
-    console.log("USer Password for Wallet Creation is " + BtcUser.userPassword);
-    client.createNewWallet(BtcUser.userName, BtcUser.userPassword, function (err, wallet, backupInfo) {
+	console.log("USer Password for Wallet Creation is " + BtcUser.userPassword);
+	var cnf = {
+		identifier: BtcUser.userName,
+		passphrase: BtcUser.userPassword,
+		keyIndex: 9999
+	}
+    client.createNewWallet(cnf, function (err, wallet, backupInfo) {
         console.log("Wallet ");
         console.log(wallet);
         console.log("BackupInfo");
