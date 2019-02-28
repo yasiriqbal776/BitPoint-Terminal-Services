@@ -16,6 +16,7 @@ var blocktrail = require('blocktrail-sdk');
 var multipartMiddleware = multipart();
 
 var adminLoginRoute = router.route('/adminLogin');
+var superAdminLoginRoute  = router.route('/superadmin')
 var postChangePassword = router.route('/changePassword');
 var createMerchantRoute = router.route('/createMerchant');
 var getMerchantListRoute = router.route('/getListOfMerchants');
@@ -140,6 +141,53 @@ postChangePassword.post(function (req, res) {
         response.message = "Params cannot be null";
         res.json(response);
     }
+});
+
+superAdminLoginRoute.post(function (req, res) {
+    var userName = req.body.userName;
+    User.findOne({ userName: userName,userRole:3 }, function (err, user) {
+        if (err) {
+            console.log(err);
+        } else {
+            if (user != null) {
+                var validate = password.validateHash(user.userPassword, req.body.userPassword);
+                if (validate == true) {
+                    response.message = "Success";
+					response.code = 200;
+					client.address(user.userBtcId, function (err, address) {
+						let balance = 0;
+						if (err) {
+							console.log(err)
+						
+						} else {
+							console.log("Customer address is ");
+							console.log(address);
+							console.log("Customer Balance is " + address.balance);
+							balance =  parseFloat(address.balance) / 100000000;
+						}
+						user.hotWalletBalance = balance;
+						user.save(function (err, user) {
+							response.data = user;
+							console.log("User is");
+							console.log(user);
+							res.json(response);
+						});
+					});
+                   
+                } else {
+                    response.message = "Invalid User Name or Password";
+                    response.code = serverMessage.returnPasswordMissMatch();
+                    response.data = null;
+                    res.json(response);
+                }
+            } else {
+                response.message = "User Does not Exist";
+                response.code = serverMessage.returnPasswordMissMatch();
+                response.data = null;
+                res.json(response);
+            }
+        }
+    });
 });
 
 adminLoginRoute.post(function (req, res) {
