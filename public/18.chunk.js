@@ -117,7 +117,7 @@ exports.default = LoginModule;
 /***/ "./src/app/profitconfiguration/profitconfiguration.style.scss":
 /***/ function(module, exports) {
 
-module.exports = "/***********************************/\n/**             Profitconfiguration     **/\n/***********************************/\n.centered-div {\n  min-width: 800px;\n  margin: 25px auto; }\n\n.myinputs {\n  border: none;\n  padding-left: 15px;\n  height: 40px;\n  border: 1px solid #ccc;\n  width: 100%; }\n\n.getProfit {\n  width: 70%;\n  height: 40px;\n  line-height: 40px;\n  background: #EBC41D;\n  color: #0D192C;\n  border: none;\n  font-size: 18px;\n  font-weight: bold; }\n\n.successalert {\n  width: 392px;\n  margin: 25px auto; }\n\n.failurealert {\n  width: 392px;\n  margin: 25px auto; }\n\n.centered-div h3 {\n  font-size: 22px;\n  font-weight: 500;\n  text-align: center;\n  margin: 35px; }\n"
+module.exports = "/***********************************/\n/**             Profitconfiguration     **/\n/***********************************/\n.centered-div {\n  min-width: 800px;\n  margin: 25px auto; }\n\n.myinputs {\n  border: none;\n  padding-left: 15px;\n  height: 40px;\n  border: 1px solid #ccc;\n  width: 100%; }\n\n.getProfit {\n  width: 70%;\n  height: 40px;\n  line-height: 40px;\n  background: #EBC41C;\n  border: none;\n  font-size: 18px;\n  font-weight: bold;\n  color: white; }\n\n.successalert {\n  width: 392px;\n  margin: 25px auto; }\n\n.failurealert {\n  width: 392px;\n  margin: 25px auto; }\n\n.centered-div h3 {\n  font-size: 22px;\n  font-weight: 500;\n  text-align: center;\n  margin: 35px; }\n"
 
 /***/ },
 
